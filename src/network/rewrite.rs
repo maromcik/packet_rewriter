@@ -6,9 +6,8 @@ use crate::network::CaptureConfig;
 use pcap::{Capture, Device};
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
-use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
-use pnet::packet::ipv4::{Ipv4Packet, MutableIpv4Packet};
-use pnet::packet::ipv6::MutableIpv6Packet;
+use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
+use pnet::packet::ipv4::MutableIpv4Packet;
 use pnet::packet::{MutablePacket, Packet};
 
 pub fn cap_rewrite(capture: CaptureConfig, rewrite: Rewrite) -> Result<(), NetworkError> {
@@ -34,10 +33,13 @@ pub fn cap_rewrite(capture: CaptureConfig, rewrite: Rewrite) -> Result<(), Netwo
     }
 
     let interfaces = datalink::interfaces();
-    let interface = interfaces.iter().find(|i| i.name == capture.output_device).ok_or(NetworkError::new(
-        NetworkErrorKind::NetworkInterfaceError,
-        &format!("Output device {} not found", capture.output_device),
-    ))?;
+    let interface = interfaces
+        .iter()
+        .find(|i| i.name == capture.output_device)
+        .ok_or(NetworkError::new(
+            NetworkErrorKind::NetworkInterfaceError,
+            &format!("Output device {} not found", capture.output_device),
+        ))?;
     println!("Sending to: {:?}", interface.name);
     let (mut tx, mut rx) = match datalink::channel(interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => Ok((tx, rx)),
@@ -56,43 +58,23 @@ pub fn cap_rewrite(capture: CaptureConfig, rewrite: Rewrite) -> Result<(), Netwo
             continue;
         };
 
-        tx.build_and_send(1, packet.packet().len(), &mut |new_packet| {
-            if let Some(mut eth_packet) = MutableEthernetPacket::new(new_packet) {
-                eth_packet.clone_from(&packet);
+        let mut buffer = vec![0; packet.packet().len()];
+        let Some(mut eth_packet) = MutableEthernetPacket::new(&mut buffer[..]) else {
+            continue;
+        };
 
-                if let Some(mac_rewrite) = &rewrite.mac_rewrite {
-                    rewrite_mac(&mut eth_packet, &mac_rewrite)
-                };
-                if let Some(ip_rewrite) = &rewrite.ipv4_rewrite {
-                    rewrite_ip(&mut eth_packet, &ip_rewrite);
-                }
-            }
-            else {
-                eprintln!("Could not build the Ethernet packet")
-            }
-        });
+        eth_packet.clone_from(&packet);
 
-        // let mut new_packet = vec![0u8; packet.packet().len()];
-        // let Some(mut eth_packet) =
-        //     MutableEthernetPacket::new(&mut new_packet)
-        // else {
-        //     eprintln!("Could not build the Ethernet packet");
-        //     continue;
-        // };
-        //
-        // eth_packet.clone_from(&packet);
-        //
-        // if let Some(mac_rewrite) = &rewrite.mac_rewrite {
-        //     rewrite_mac(&mut eth_packet, &mac_rewrite)
-        // };
-        // if let Some(ip_rewrite) = &rewrite.ipv4_rewrite {
-        //     rewrite_ip(&mut eth_packet, &ip_rewrite);
-        // }
-        // match tx.send_to(eth_packet.packet(), None) {
-        //     Some(Ok(_)) => println!("Packet sent successfully!"),
-        //     Some(Err(e)) => eprintln!("Failed to send packet: {}", e),
-        //     None => eprintln!("send_to() returned None"),
-        // }
+        if let Some(mac_rewrite) = &rewrite.mac_rewrite {
+            rewrite_mac(&mut eth_packet, &mac_rewrite)
+        };
+        if let Some(ip_rewrite) = &rewrite.ipv4_rewrite {
+            rewrite_ip(&mut eth_packet, &ip_rewrite);
+        }
+        let eth_packet = eth_packet.to_immutable();
+        if packet != eth_packet {
+            tx.send_to(eth_packet.packet(), None);
+        }
     }
     Ok(())
 }
