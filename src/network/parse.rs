@@ -1,4 +1,3 @@
-use crate::error::AppError;
 use crate::network::error::NetworkError;
 use crate::network::rewrite::{Ipv4Rewrite, Ipv6Rewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite};
 use crate::Cli;
@@ -23,7 +22,7 @@ pub fn parse_port(port: Option<&String>) -> Result<Option<u16>, ParseIntError> {
     port.map(|p| p.parse::<u16>()).transpose()
 }
 
-pub fn parse_rewrites(cli: Cli) -> Result<Rewrite, NetworkError> {
+pub fn parse_rewrites(cli: &Cli) -> Result<Rewrite, NetworkError> {
     let mac_rewrite = match (cli.src_mac, cli.dst_mac) {
         (src_mac, Some(dst_mac)) => Some(MacRewrite {
             src_mac,

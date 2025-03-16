@@ -1,21 +1,23 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use thiserror::Error;
+use std::fmt::{write, Debug, Display, Formatter};
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum AppErrorKind {
     NetworkError(NetworkErrorKind),
+    ArgumentError,
 }
 
 impl Display for AppErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             AppErrorKind::NetworkError(err) => std::fmt::Display::fmt(&err, f),
+            AppErrorKind::ArgumentError => write!(f, "Invalid arguments"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub struct AppError {
     pub error_kind: AppErrorKind,
     pub message: String,
@@ -27,7 +29,6 @@ impl Display for AppError {
     }
 }
 
-impl Error for AppError {}
 
 impl AppError {
     pub fn new(error_kind: AppErrorKind, message: &str) -> Self {
