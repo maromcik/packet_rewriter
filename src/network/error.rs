@@ -1,14 +1,18 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::net::AddrParseError;
+use std::num::ParseIntError;
 use std::sync::mpsc;
 use pnet::datalink::ParseMacAddrErr;
 
 #[derive(Debug, Clone)]
 pub enum NetworkErrorKind {
     CaptureError,
+    NetworkInterfaceError,
     NetworkChannelError,
     RustChannelError,
     ParseAddrError,
+
 }
 
 impl Display for NetworkErrorKind {
@@ -16,6 +20,9 @@ impl Display for NetworkErrorKind {
         match self {
             NetworkErrorKind::CaptureError => {
                 f.write_str("Capture error")
+            }
+            NetworkErrorKind::NetworkInterfaceError => {
+                f.write_str("Network interface error")
             }
             NetworkErrorKind::NetworkChannelError => {
                 f.write_str("Network channel error")
@@ -73,6 +80,18 @@ impl From<mpsc::RecvError> for NetworkError {
 
 impl From<ParseMacAddrErr> for NetworkError {
     fn from(value: ParseMacAddrErr) -> Self {
+        NetworkError::new(NetworkErrorKind::ParseAddrError, &value.to_string())
+    }
+}
+
+impl From<AddrParseError> for NetworkError {
+    fn from(value: AddrParseError) -> Self {
+        NetworkError::new(NetworkErrorKind::ParseAddrError, &value.to_string())
+    }
+}
+
+impl From<ParseIntError> for NetworkError {
+    fn from(value: ParseIntError) -> Self {
         NetworkError::new(NetworkErrorKind::ParseAddrError, &value.to_string())
     }
 }

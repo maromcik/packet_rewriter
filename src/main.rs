@@ -1,8 +1,8 @@
 extern crate core;
 
-use crate::network::listener::{cap_rewrite, CaptureConfig};
-use crate::network::parse::parse_mac;
-use crate::network::rewrite::{IpRewrite, MacRewrite, PortRewrite, Rewrite};
+use crate::network::parse::{parse_mac, parse_rewrites};
+use crate::network::rewrite::{cap_rewrite, Ipv4Rewrite, MacRewrite, PortRewrite, Rewrite};
+use crate::network::CaptureConfig;
 use clap::Parser;
 use std::error::Error;
 
@@ -18,7 +18,7 @@ struct Cli {
 
     /// BPF Filter for packets
     #[clap(short, long, value_name = "BPF_FILTER")]
-    filter: String,
+    filter: Option<String>,
 
     /// Output device to send modified packets out
     #[clap(short = 'o', long = "out-dev", value_name = "OUTPUT_DEVICE")]
@@ -56,28 +56,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
     let cap = CaptureConfig {
-        capture_device: cli.capture_device,
-        filter: cli.filter,
-        output_device: cli.output_device,
+        capture_device: cli.capture_device.clone(),
+        filter: cli.filter.clone(),
+        output_device: cli.output_device.clone(),
     };
 
-    let rewrite = Rewrite {
-        mac_rewrite: MacRewrite {
-            src_mac: parse_mac(cli.src_mac)?,
-            dst_mac: parse_mac(cli.dst_mac)?,
-        },
-
-        ip_rewrite: IpRewrite {
-            src_ip: cli.src_ip,
-            dst_ip: cli.dst_ip,
-        },
-        port_rewrite: PortRewrite {
-            src_port: cli.src_port,
-            dst_port: cli.dst_port,
-        },
-    };
+    let rewrite = parse_rewrites(&cli)?;
 
     cap_rewrite(cap, rewrite)?;
-    
+
     Ok(())
 }

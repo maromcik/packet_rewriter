@@ -1,4 +1,4 @@
-use crate::network::error::NetworkErrorKind;
+use crate::network::error::{NetworkError, NetworkErrorKind};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -35,5 +35,11 @@ impl AppError {
             error_kind,
             message: message.to_owned(),
         }
+    }
+}
+
+impl From<NetworkError> for AppError {
+    fn from(value: NetworkError) -> Self {
+        Self::new(AppErrorKind::NetworkError(value.error_kind), value.message.as_str())
     }
 }
