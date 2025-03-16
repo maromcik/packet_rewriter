@@ -35,7 +35,7 @@ struct Cli {
     dst_mac: Option<MacAddr>,
 
     /// New source IPv4
-    #[clap(short = 's', long = "src-ip4", value_name = "SRC_IPv4")]
+    #[clap(short = 's', long = "src-ipv4", value_name = "SRC_IPv4")]
     src_ipv4: Option<Ipv4Addr>,
 
     /// New destination IPv4

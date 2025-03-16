@@ -94,11 +94,13 @@ pub fn cap_rewrite(capture: CaptureConfig, rewrite: Rewrite) -> Result<(), Netwo
 
     while let Ok(cap_packet) = cap.next_packet() {
         let Some(packet) = EthernetPacket::new(cap_packet.data) else {
+            println!("Invalid packet type");
             continue;
         };
 
         let mut buffer = vec![0; packet.packet().len()];
         let Some(mut eth_packet) = MutableEthernetPacket::new(&mut buffer[..]) else {
+            println!("Could not build the new packet");
             continue;
         };
 
@@ -107,6 +109,9 @@ pub fn cap_rewrite(capture: CaptureConfig, rewrite: Rewrite) -> Result<(), Netwo
         if let Some(mac_rewrite) = &rewrite.mac_rewrite {
             rewrite_mac(&mut eth_packet, &mac_rewrite)
         };
+        if let Some(vlan_rewrite) = &rewrite.vlan_rewrite {
+            rewrite_vlan(&mut eth_packet, &vlan_rewrite);
+        }
         if let Some(ip_rewrite) = &rewrite.ipv4_rewrite {
             rewrite_ipv4(&mut eth_packet, &ip_rewrite);
         }
@@ -152,7 +157,8 @@ pub fn rewrite_vlan(mut packet: &mut MutableEthernetPacket, rewrite: &VlanRewrit
                 eprintln!("Could not build the IPv4 packet");
                 return;
             };
-            vlan_packet.set_vlan_identifier(3_u16);
+            println!("vlan_id: {}, changing to: {}", vlan_packet.get_vlan_identifier(), rewrite.vlan_id);
+            vlan_packet.set_vlan_identifier(rewrite.vlan_id);
         },
         _ => {}
     }
