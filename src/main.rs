@@ -5,6 +5,8 @@ use crate::network::rewrite::{cap_rewrite, Ipv4Rewrite, MacRewrite, PortRewrite,
 use crate::network::CaptureConfig;
 use clap::Parser;
 use std::error::Error;
+use std::net::Ipv4Addr;
+use pnet::datalink::MacAddr;
 
 mod error;
 mod network;
@@ -26,30 +28,32 @@ struct Cli {
 
     /// New source MAC
     #[clap(long = "src-mac", value_name = "SRC_MAC")]
-    src_mac: Option<String>,
+    src_mac: Option<MacAddr>,
 
     /// New destination MAC
     #[clap(long = "dst-mac", value_name = "DST_MAC")]
-    dst_mac: Option<String>,
+    dst_mac: Option<MacAddr>,
 
     /// New source IP
-    #[clap(short = 's', long = "src-ip", value_name = "SRC_IP")]
-    src_ip: Option<String>,
+    #[clap(short = 's', long = "src-ip4", value_name = "SRC_IPv4")]
+    src_ipv4: Option<Ipv4Addr>,
 
     /// New destination IP
-    #[clap(short = 'd', long = "dst-ip", value_name = "DST_IP")]
-    dst_ip: Option<String>,
+    #[clap(short = 'd', long = "dst-ipv4", value_name = "DST_IPv4")]
+    dst_ipv4: Option<Ipv4Addr>,
 
     /// New source Port
     #[clap(long = "src-port", value_name = "SRC_PORT")]
-    src_port: Option<String>,
+    src_port: Option<u16>,
 
     /// New destination Port
     #[clap(long = "dst-port", value_name = "DST_PORT")]
-    dst_port: Option<String>,
-    // /// Print occurrence count instead of the regular output
-    // #[arg(short = 'c', long, action = clap::ArgAction::SetTrue)]
-    // count: bool,
+    dst_port: Option<u16>,
+
+    /// New VLAN identifier
+    #[clap(short = 'v', long = "vlan", value_name = "VLAN IDENTIFIER")]
+    vlan_id: Option<u16>,
+
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -61,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         output_device: cli.output_device.clone(),
     };
 
-    let rewrite = parse_rewrites(&cli)?;
+    let rewrite = parse_rewrites(cli)?;
 
     cap_rewrite(cap, rewrite)?;
 
