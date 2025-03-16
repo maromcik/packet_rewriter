@@ -5,7 +5,7 @@ use crate::network::rewrite::{cap_rewrite, Ipv4Rewrite, MacRewrite, PortRewrite,
 use crate::network::CaptureConfig;
 use clap::Parser;
 use std::error::Error;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use pnet::datalink::MacAddr;
 
 mod error;
@@ -34,13 +34,21 @@ struct Cli {
     #[clap(long = "dst-mac", value_name = "DST_MAC")]
     dst_mac: Option<MacAddr>,
 
-    /// New source IP
+    /// New source IPv4
     #[clap(short = 's', long = "src-ip4", value_name = "SRC_IPv4")]
     src_ipv4: Option<Ipv4Addr>,
 
-    /// New destination IP
+    /// New destination IPv4
     #[clap(short = 'd', long = "dst-ipv4", value_name = "DST_IPv4")]
     dst_ipv4: Option<Ipv4Addr>,
+
+    /// New source IPv6
+    #[clap(long = "src-ip6", value_name = "SRC_IPv6")]
+    src_ipv6: Option<Ipv6Addr>,
+
+    /// New destination IPv6
+    #[clap(long = "dst-ipv6", value_name = "DST_IPv6")]
+    dst_ipv6: Option<Ipv6Addr>,
 
     /// New source Port
     #[clap(long = "src-port", value_name = "SRC_PORT")]

@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::network::error::NetworkError;
-use crate::network::rewrite::{Ipv4Rewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite};
+use crate::network::rewrite::{Ipv4Rewrite, Ipv6Rewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite};
 use crate::Cli;
 use pnet::datalink::{MacAddr, ParseMacAddrErr};
 use std::net::{AddrParseError, Ipv4Addr, Ipv6Addr};
@@ -47,6 +47,19 @@ pub fn parse_rewrites(cli: Cli) -> Result<Rewrite, NetworkError> {
         }),
         (None, None) => None,
     };
+
+    let ipv6_rewrite = match (cli.src_ipv6, cli.dst_ipv6) {
+        (src_ip, Some(dst_ip)) => Some(Ipv6Rewrite {
+            src_ip,
+            dst_ip: Some(dst_ip)
+        }),
+        (Some(src_ip), dst_ip) => Some(Ipv6Rewrite {
+            src_ip: Some(src_ip),
+            dst_ip,
+        }),
+        (None, None) => None,
+    };
+
     let port_rewrite = match (cli.src_port, cli.dst_port) {
         (src_port, Some(dst_port)) => Some(PortRewrite {
             src_port,
@@ -64,6 +77,7 @@ pub fn parse_rewrites(cli: Cli) -> Result<Rewrite, NetworkError> {
     Ok(Rewrite {
         mac_rewrite,
         ipv4_rewrite,
+        ipv6_rewrite,
         port_rewrite,
         vlan_rewrite,
     })
