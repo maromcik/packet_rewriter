@@ -1,8 +1,10 @@
 use crate::network::cap::PacketCapture;
-use crate::network::error::NetworkError;
+use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::interface::{get_network_channel, NetworkConfig};
+use crate::network::packet::IpPacket;
 use pcap::{Activated, State};
 use pnet::datalink::MacAddr;
+use pnet::packet::dns::MutableDnsPacket;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
@@ -63,20 +65,25 @@ where
     let mut channel = get_network_channel(&net_config)?;
     let mut cap = capture.get_capture();
     while let Ok(cap_packet) = cap.next_packet() {
-        let Some(packet) = EthernetPacket::new(cap_packet.data) else {
-            println!("Invalid packet type");
-            continue;
-        };
+        let packet = EthernetPacket::new(cap_packet.data).ok_or(NetworkError::new(
+            NetworkErrorKind::PacketConstructionError,
+            "Invalid EthernetPacket",
+        ))?;
 
         let mut buffer = vec![0; packet.packet().len()];
-        let Some(mut eth_packet) = MutableEthernetPacket::new(&mut buffer[..]) else {
-            println!("Could not build the new packet");
-            continue;
-        };
+        let mut eth_packet =
+            MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
+                NetworkErrorKind::PacketConstructionError,
+                "Could not construct a EthernetPacket",
+            ))?;
 
         eth_packet.clone_from(&packet);
 
         rewrite_mac(&mut eth_packet, &rewrite);
+        rewrite_vlan(&mut eth_packet, &rewrite)?;
+        rewrite_ipv4(&mut eth_packet, &rewrite)?;
+        rewrite_ipv6(&mut eth_packet, &rewrite)?;
+        rewrite_port(&mut eth_packet, &rewrite)?;
 
         let eth_packet = eth_packet.to_immutable();
 
@@ -114,20 +121,21 @@ pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
         );
         packet.set_destination(dst_mac);
     }
-    rewrite_vlan(packet, rewrites);
-    rewrite_ipv4(packet, rewrites);
-    rewrite_ipv6(packet, rewrites);
 }
 
-pub fn rewrite_vlan(packet: &mut MutableEthernetPacket, rewrite: &Rewrite) {
+pub fn rewrite_vlan(
+    packet: &mut MutableEthernetPacket,
+    rewrite: &Rewrite,
+) -> Result<(), NetworkError> {
     let Some(rewrite) = &rewrite.vlan_rewrite else {
-        return;
+        return Ok(());
     };
     if packet.get_ethertype() == EtherTypes::Vlan {
-        let Some(mut vlan_packet) = MutableVlanPacket::new(packet.payload_mut()) else {
-            eprintln!("Could not build the IPv4 packet");
-            return;
-        };
+        let mut vlan_packet =
+            MutableVlanPacket::new(packet.payload_mut()).ok_or(NetworkError::new(
+                NetworkErrorKind::PacketConstructionError,
+                "VLAN Packet empty",
+            ))?;
         println!(
             "vlan_id: {}, changing to: {}",
             vlan_packet.get_vlan_identifier(),
@@ -135,17 +143,22 @@ pub fn rewrite_vlan(packet: &mut MutableEthernetPacket, rewrite: &Rewrite) {
         );
         vlan_packet.set_vlan_identifier(rewrite.vlan_id);
     }
+    Ok(())
 }
 
-pub fn rewrite_ipv4(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
+pub fn rewrite_ipv4(
+    packet: &mut MutableEthernetPacket,
+    rewrites: &Rewrite,
+) -> Result<(), NetworkError> {
     let Some(rewrite) = &rewrites.ipv4_rewrite else {
-        return;
+        return Ok(());
     };
     if packet.get_ethertype() == EtherTypes::Ipv4 {
-        let Some(mut ipv4_packet) = MutableIpv4Packet::new(packet.payload_mut()) else {
-            eprintln!("Could not build the IPv4 packet");
-            return;
-        };
+        let mut ipv4_packet =
+            MutableIpv4Packet::new(packet.payload_mut()).ok_or(NetworkError::new(
+                NetworkErrorKind::PacketConstructionError,
+                "Ipv4 Packet empty",
+            ))?;
         if let Some(src_ip) = rewrite.src_ip {
             println!(
                 "src_ip: {}, dst_ip: {}, changing src to: {}",
@@ -165,20 +178,23 @@ pub fn rewrite_ipv4(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
             ipv4_packet.set_destination(dst_ip);
             ipv4_packet.set_checksum(checksum(&ipv4_packet.to_immutable()));
         }
-        let protocol = ipv4_packet.get_next_level_protocol();
-        rewrite_port(ipv4_packet.payload_mut(), protocol, rewrites);
     }
+    Ok(())
 }
 
-pub fn rewrite_ipv6(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
+pub fn rewrite_ipv6(
+    packet: &mut MutableEthernetPacket,
+    rewrites: &Rewrite,
+) -> Result<(), NetworkError> {
     let Some(rewrite) = &rewrites.ipv6_rewrite else {
-        return;
+        return Ok(());
     };
     if packet.get_ethertype() == EtherTypes::Ipv6 {
-        let Some(mut ipv6_packet) = MutableIpv6Packet::new(packet.payload_mut()) else {
-            eprintln!("Could not build the IPv6 packet");
-            return;
-        };
+        let mut ipv6_packet =
+            MutableIpv6Packet::new(packet.payload_mut()).ok_or(NetworkError::new(
+                NetworkErrorKind::PacketConstructionError,
+                "IPv6 Packet empty",
+            ))?;
         if let Some(src_ip) = rewrite.src_ip {
             println!(
                 "src_ip: {}, dst_ip: {}, changing src to: {}",
@@ -197,40 +213,79 @@ pub fn rewrite_ipv6(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
             );
             ipv6_packet.set_destination(dst_ip);
         };
-        let protocol = ipv6_packet.get_next_header();
-        rewrite_port(ipv6_packet.payload_mut(), protocol, rewrites);
     }
+    Ok(())
 }
 
-pub fn rewrite_port(packet: &mut [u8], protocol: IpNextHeaderProtocol, rewrites: &Rewrite) {
+pub fn rewrite_port(
+    packet: &mut MutableEthernetPacket,
+    rewrites: &Rewrite,
+) -> Result<(), NetworkError> {
     let Some(rewrite) = &rewrites.port_rewrite else {
-        return;
+        return Ok(());
     };
-    match protocol {
+
+    let Some(mut ip_packet) = get_ip_packet(packet)? else {
+        return Ok(());
+    };
+
+    match ip_packet.get_next_header_protocol() {
         IpNextHeaderProtocols::Tcp => {
-            let Some(mut tcp_packet) = MutableTcpPacket::new(packet) else {
-                eprintln!("Could not build the TCP packet");
-                return;
-            };
+            let mut tcp_packet =
+                MutableTcpPacket::new(ip_packet.get_mut_payload()).ok_or(NetworkError::new(
+                    NetworkErrorKind::PacketConstructionError,
+                    "TCP Packet is empty",
+                ))?;
             if let Some(src) = rewrite.src_port {
                 tcp_packet.set_source(src);
             }
             if let Some(dst) = rewrite.dst_port {
                 tcp_packet.set_destination(dst);
-            }
+            };
+            Ok(())
         }
         IpNextHeaderProtocols::Udp => {
-            let Some(mut udp_packet) = MutableUdpPacket::new(packet) else {
-                eprintln!("Could not build the UDP packet");
-                return;
-            };
+            let mut udp_packet =
+                MutableUdpPacket::new(ip_packet.get_mut_payload()).ok_or(NetworkError::new(
+                    NetworkErrorKind::PacketConstructionError,
+                    "UDP Packet is empty",
+                ))?;
             if let Some(src) = rewrite.src_port {
                 udp_packet.set_source(src);
             }
             if let Some(dst) = rewrite.dst_port {
                 udp_packet.set_destination(dst);
+            };
+            let dns = MutableDnsPacket::new(udp_packet.payload_mut()).unwrap();
+            for q in dns.get_queries_iter() {
+                println!("query: {:?}", String::from_utf8(q.get_qname()));
             }
+            Ok(())
         }
-        _ => {}
+        _ => Ok(()),
+    }
+}
+
+pub fn get_ip_packet<'a>(
+    packet: &'a mut MutableEthernetPacket,
+) -> Result<Option<IpPacket<'a>>, NetworkError> {
+    match packet.get_ethertype() {
+        EtherTypes::Ipv4 => {
+            let ipv4_packet =
+                MutableIpv4Packet::new(packet.payload_mut()).ok_or(NetworkError::new(
+                    NetworkErrorKind::PacketConstructionError,
+                    "IPv4 packet is empty",
+                ))?;
+            Ok(Some(IpPacket::Ipv4Packet(ipv4_packet)))
+        }
+        EtherTypes::Ipv6 => {
+            let ipv6_packet =
+                MutableIpv6Packet::new(packet.payload_mut()).ok_or(NetworkError::new(
+                    NetworkErrorKind::PacketConstructionError,
+                    "IPv4 packet is empty",
+                ))?;
+            Ok(Some(IpPacket::Ipv6Packet(ipv6_packet)))
+        }
+        _ => Ok(None),
     }
 }
