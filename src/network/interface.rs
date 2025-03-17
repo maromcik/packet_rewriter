@@ -1,9 +1,8 @@
-use std::time::Duration;
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use pnet::datalink;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{DataLinkReceiver, DataLinkSender};
-
+use std::time::Duration;
 
 pub struct NetworkConfig {
     pub output_device: String,

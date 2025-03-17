@@ -1,9 +1,9 @@
+use pnet::datalink::ParseMacAddrErr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::AddrParseError;
 use std::num::ParseIntError;
 use std::sync::mpsc;
-use pnet::datalink::ParseMacAddrErr;
 
 #[derive(Debug, Clone)]
 pub enum NetworkErrorKind {
@@ -12,27 +12,16 @@ pub enum NetworkErrorKind {
     NetworkChannelError,
     RustChannelError,
     ParseAddrError,
-
 }
 
 impl Display for NetworkErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            NetworkErrorKind::CaptureError => {
-                f.write_str("Capture error")
-            }
-            NetworkErrorKind::NetworkInterfaceError => {
-                f.write_str("Network interface error")
-            }
-            NetworkErrorKind::NetworkChannelError => {
-                f.write_str("Network channel error")
-            }
-            NetworkErrorKind::RustChannelError => {
-                f.write_str("Rust channel error")
-            }
-            NetworkErrorKind::ParseAddrError => {
-                f.write_str("Address parse error")
-            }
+            NetworkErrorKind::CaptureError => f.write_str("Capture error"),
+            NetworkErrorKind::NetworkInterfaceError => f.write_str("Network interface error"),
+            NetworkErrorKind::NetworkChannelError => f.write_str("Network channel error"),
+            NetworkErrorKind::RustChannelError => f.write_str("Rust channel error"),
+            NetworkErrorKind::ParseAddrError => f.write_str("Address parse error"),
         }
     }
 }

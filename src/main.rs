@@ -1,12 +1,12 @@
 extern crate core;
 
 use crate::error::{AppError, AppErrorKind};
-use crate::network::cap::{PacketCapture, PacketCaptureGeneric};
+use crate::network::cap::PacketCaptureGeneric;
 use crate::network::interface::NetworkConfig;
 use crate::network::parse::parse_rewrites;
 use crate::network::rewrite::cap_rewrite;
 use clap::Parser;
-use pcap::{Activated, Active, Offline};
+use pcap::{Active, Offline};
 use pnet::datalink::MacAddr;
 use std::error::Error;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -83,15 +83,14 @@ struct Cli {
     /// New VLAN identifier
     #[clap(short = 'v', long = "vlan", value_name = "VLAN IDENTIFIER")]
     vlan_id: Option<u16>,
-    
+
     /// Interval between packets in milliseconds
     #[clap(short = 'i', long = "interval", value_name = "INTERVAL")]
     interval: Option<u64>,
-    
+
     /// If true, packets that are same after rewrite are not sent
     #[arg(short = 's', long = "straight", action = clap::ArgAction::SetTrue)]
     straight: bool,
-    
 }
 
 fn main() -> Result<(), Box<dyn Error>> {

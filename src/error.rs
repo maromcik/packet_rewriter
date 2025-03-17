@@ -1,6 +1,6 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
+use std::fmt::{Debug, Display, Formatter};
 use thiserror::Error;
-use std::fmt::{write, Debug, Display, Formatter};
 
 #[derive(Error, Debug, Clone)]
 pub enum AppErrorKind {
@@ -29,7 +29,6 @@ impl Display for AppError {
     }
 }
 
-
 impl AppError {
     pub fn new(error_kind: AppErrorKind, message: &str) -> Self {
         Self {
@@ -41,6 +40,9 @@ impl AppError {
 
 impl From<NetworkError> for AppError {
     fn from(value: NetworkError) -> Self {
-        Self::new(AppErrorKind::NetworkError(value.error_kind), value.message.as_str())
+        Self::new(
+            AppErrorKind::NetworkError(value.error_kind),
+            value.message.as_str(),
+        )
     }
 }

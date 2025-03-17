@@ -8,11 +8,11 @@ use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
 use pnet::packet::ipv6::MutableIpv6Packet;
 use pnet::packet::tcp::MutableTcpPacket;
+use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use pnet::packet::{MutablePacket, Packet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::thread::sleep;
-use pnet::packet::udp::MutableUdpPacket;
 
 #[derive(Default)]
 pub struct Rewrite {
@@ -75,9 +75,9 @@ where
         };
 
         eth_packet.clone_from(&packet);
-        
+
         rewrite_mac(&mut eth_packet, &rewrite);
-        
+
         let eth_packet = eth_packet.to_immutable();
 
         if net_config.straight || packet != eth_packet {
@@ -92,7 +92,7 @@ where
 }
 
 pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
-    let Some(rewrite) = &rewrites.mac_rewrite else { 
+    let Some(rewrite) = &rewrites.mac_rewrite else {
         return;
     };
     if let Some(src_mac) = rewrite.src_mac {
@@ -202,7 +202,7 @@ pub fn rewrite_ipv6(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
     }
 }
 
-pub fn rewrite_port(packet: &mut [u8], protocol: IpNextHeaderProtocol ,rewrites: &Rewrite) {
+pub fn rewrite_port(packet: &mut [u8], protocol: IpNextHeaderProtocol, rewrites: &Rewrite) {
     let Some(rewrite) = &rewrites.port_rewrite else {
         return;
     };
@@ -229,7 +229,7 @@ pub fn rewrite_port(packet: &mut [u8], protocol: IpNextHeaderProtocol ,rewrites:
             }
             if let Some(dst) = rewrite.dst_port {
                 udp_packet.set_destination(dst);
-            } 
+            }
         }
         _ => {}
     }

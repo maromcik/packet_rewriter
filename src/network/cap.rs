@@ -1,12 +1,6 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use pcap::{Activated, Active, Capture, Device, Offline, State};
 
-pub enum DeviceType {
-    File,
-    Device,
-}
-
-
 pub trait PacketCapture<T>
 where
     T: State + Activated,
@@ -23,8 +17,14 @@ where
     pub filter: Option<String>,
 }
 
-impl<T> PacketCaptureGeneric<T> where T: State + Activated {
-    pub fn open_device_capture(device_name: &str, filter: Option<String>) -> Result<PacketCaptureGeneric<Active>, NetworkError> {
+impl<T> PacketCaptureGeneric<T>
+where
+    T: State + Activated,
+{
+    pub fn open_device_capture(
+        device_name: &str,
+        filter: Option<String>,
+    ) -> Result<PacketCaptureGeneric<Active>, NetworkError> {
         let devices = Device::list()?;
         let target =
             devices
@@ -36,20 +36,19 @@ impl<T> PacketCaptureGeneric<T> where T: State + Activated {
                 ))?;
         println!("Listening on: {:?}", target.name);
 
-
         let capture = Capture::from_device(target)?
             .promisc(true)
             .immediate_mode(true)
             .open()
             .map_err(NetworkError::from)?;
 
-        Ok(PacketCaptureGeneric {
-            capture,
-            filter,
-        })
+        Ok(PacketCaptureGeneric { capture, filter })
     }
 
-    pub fn open_file_capture(file_path: &str, filter: Option<String>) -> Result<PacketCaptureGeneric<Offline>, NetworkError> {
+    pub fn open_file_capture(
+        file_path: &str,
+        filter: Option<String>,
+    ) -> Result<PacketCaptureGeneric<Offline>, NetworkError> {
         Ok(PacketCaptureGeneric {
             capture: Capture::from_file(file_path).map_err(NetworkError::from)?,
             filter,
