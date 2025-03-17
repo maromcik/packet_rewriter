@@ -1,15 +1,18 @@
-use pnet::datalink::MacAddr;
-use std::net::{Ipv4Addr, Ipv6Addr};
-use std::thread::sleep;
 use crate::network::cap::PacketCapture;
 use crate::network::error::NetworkError;
 use crate::network::interface::{get_network_channel, NetworkConfig};
 use pcap::{Activated, State};
+use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
+use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
 use pnet::packet::ipv6::MutableIpv6Packet;
+use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use pnet::packet::{MutablePacket, Packet};
+use std::net::{Ipv4Addr, Ipv6Addr};
+use std::thread::sleep;
+use pnet::packet::udp::MutableUdpPacket;
 
 #[derive(Default)]
 pub struct Rewrite {
@@ -54,7 +57,7 @@ pub fn cap_rewrite<T>(
     rewrite: Rewrite,
 ) -> Result<(), NetworkError>
 where
-    T: State + Activated
+    T: State + Activated,
 {
     capture.apply_filter()?;
     let mut channel = get_network_channel(&net_config)?;
@@ -72,21 +75,11 @@ where
         };
 
         eth_packet.clone_from(&packet);
-
-        if let Some(mac_rewrite) = &rewrite.mac_rewrite {
-            rewrite_mac(&mut eth_packet, mac_rewrite)
-        };
-        if let Some(vlan_rewrite) = &rewrite.vlan_rewrite {
-            rewrite_vlan(&mut eth_packet, vlan_rewrite);
-        }
-        if let Some(ip_rewrite) = &rewrite.ipv4_rewrite {
-            rewrite_ipv4(&mut eth_packet, ip_rewrite);
-        }
-        if let Some(ip_rewrite) = &rewrite.ipv6_rewrite {
-            rewrite_ipv6(&mut eth_packet, ip_rewrite);
-        }
-        let eth_packet = eth_packet.to_immutable();
         
+        rewrite_mac(&mut eth_packet, &rewrite);
+        
+        let eth_packet = eth_packet.to_immutable();
+
         if net_config.straight || packet != eth_packet {
             channel.tx.send_to(eth_packet.packet(), None);
             println!("Packet sent")
@@ -98,7 +91,10 @@ where
     Ok(())
 }
 
-pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrite: &MacRewrite) {
+pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
+    let Some(rewrite) = &rewrites.mac_rewrite else { 
+        return;
+    };
     if let Some(src_mac) = rewrite.src_mac {
         println!(
             "src_mac: {}, dst_mac: {}, changing src to: {}",
@@ -118,9 +114,15 @@ pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrite: &MacRewrite) {
         );
         packet.set_destination(dst_mac);
     }
+    rewrite_vlan(packet, rewrites);
+    rewrite_ipv4(packet, rewrites);
+    rewrite_ipv6(packet, rewrites);
 }
 
-pub fn rewrite_vlan(packet: &mut MutableEthernetPacket, rewrite: &VlanRewrite) {
+pub fn rewrite_vlan(packet: &mut MutableEthernetPacket, rewrite: &Rewrite) {
+    let Some(rewrite) = &rewrite.vlan_rewrite else {
+        return;
+    };
     if packet.get_ethertype() == EtherTypes::Vlan {
         let Some(mut vlan_packet) = MutableVlanPacket::new(packet.payload_mut()) else {
             eprintln!("Could not build the IPv4 packet");
@@ -135,7 +137,10 @@ pub fn rewrite_vlan(packet: &mut MutableEthernetPacket, rewrite: &VlanRewrite) {
     }
 }
 
-pub fn rewrite_ipv4(packet: &mut MutableEthernetPacket, rewrite: &Ipv4Rewrite) {
+pub fn rewrite_ipv4(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
+    let Some(rewrite) = &rewrites.ipv4_rewrite else {
+        return;
+    };
     if packet.get_ethertype() == EtherTypes::Ipv4 {
         let Some(mut ipv4_packet) = MutableIpv4Packet::new(packet.payload_mut()) else {
             eprintln!("Could not build the IPv4 packet");
@@ -160,10 +165,15 @@ pub fn rewrite_ipv4(packet: &mut MutableEthernetPacket, rewrite: &Ipv4Rewrite) {
             ipv4_packet.set_destination(dst_ip);
             ipv4_packet.set_checksum(checksum(&ipv4_packet.to_immutable()));
         }
+        let protocol = ipv4_packet.get_next_level_protocol();
+        rewrite_port(ipv4_packet.payload_mut(), protocol, rewrites);
     }
 }
 
-pub fn rewrite_ipv6(packet: &mut MutableEthernetPacket, rewrite: &Ipv6Rewrite) {
+pub fn rewrite_ipv6(packet: &mut MutableEthernetPacket, rewrites: &Rewrite) {
+    let Some(rewrite) = &rewrites.ipv6_rewrite else {
+        return;
+    };
     if packet.get_ethertype() == EtherTypes::Ipv6 {
         let Some(mut ipv6_packet) = MutableIpv6Packet::new(packet.payload_mut()) else {
             eprintln!("Could not build the IPv6 packet");
@@ -186,6 +196,41 @@ pub fn rewrite_ipv6(packet: &mut MutableEthernetPacket, rewrite: &Ipv6Rewrite) {
                 dst_ip
             );
             ipv6_packet.set_destination(dst_ip);
+        };
+        let protocol = ipv6_packet.get_next_header();
+        rewrite_port(ipv6_packet.payload_mut(), protocol, rewrites);
+    }
+}
+
+pub fn rewrite_port(packet: &mut [u8], protocol: IpNextHeaderProtocol ,rewrites: &Rewrite) {
+    let Some(rewrite) = &rewrites.port_rewrite else {
+        return;
+    };
+    match protocol {
+        IpNextHeaderProtocols::Tcp => {
+            let Some(mut tcp_packet) = MutableTcpPacket::new(packet) else {
+                eprintln!("Could not build the TCP packet");
+                return;
+            };
+            if let Some(src) = rewrite.src_port {
+                tcp_packet.set_source(src);
+            }
+            if let Some(dst) = rewrite.dst_port {
+                tcp_packet.set_destination(dst);
+            }
         }
+        IpNextHeaderProtocols::Udp => {
+            let Some(mut udp_packet) = MutableUdpPacket::new(packet) else {
+                eprintln!("Could not build the UDP packet");
+                return;
+            };
+            if let Some(src) = rewrite.src_port {
+                udp_packet.set_source(src);
+            }
+            if let Some(dst) = rewrite.dst_port {
+                udp_packet.set_destination(dst);
+            } 
+        }
+        _ => {}
     }
 }
