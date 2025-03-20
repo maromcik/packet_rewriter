@@ -1,65 +1,58 @@
 use crate::network::error::NetworkError;
-use crate::network::rewrite::{
-    Ipv4Rewrite, Ipv6Rewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite,
-};
+use crate::network::rewrite::{DataLinkRewrite, IpRewrite, Ipv4Rewrite, Ipv6Rewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite};
 use crate::Cli;
 
 pub fn parse_rewrites(cli: &Cli) -> Result<Rewrite, NetworkError> {
+    let vlan_rewrite = cli.vlan_id.map(|id| VlanRewrite { vlan_id: id });
     let mac_rewrite = match (cli.src_mac, cli.dst_mac) {
-        (src_mac, Some(dst_mac)) => Some(MacRewrite {
-            src_mac,
-            dst_mac: Some(dst_mac),
-        }),
-        (Some(src_mac), dst_mac) => Some(MacRewrite {
-            src_mac: Some(src_mac),
-            dst_mac,
-        }),
         (None, None) => None,
+        (_, _) => Some(MacRewrite {
+            src_mac: cli.src_mac,
+            dst_mac: cli.dst_mac,
+        })
     };
+    
+    let datalink_rewrite = Some(DataLinkRewrite {
+        mac_rewrite,
+        vlan_rewrite,
+    });
 
     let ipv4_rewrite = match (cli.src_ipv4, cli.dst_ipv4) {
-        (src_ip, Some(dst_ip)) => Some(Ipv4Rewrite {
-            src_ip,
-            dst_ip: Some(dst_ip),
-        }),
-        (Some(src_ip), dst_ip) => Some(Ipv4Rewrite {
-            src_ip: Some(src_ip),
-            dst_ip,
-        }),
         (None, None) => None,
+        (_, _) => Some(Ipv4Rewrite {
+            src_ip: cli.src_ipv4,
+            dst_ip: cli.dst_ipv4,
+        }),
     };
 
     let ipv6_rewrite = match (cli.src_ipv6, cli.dst_ipv6) {
-        (src_ip, Some(dst_ip)) => Some(Ipv6Rewrite {
-            src_ip,
-            dst_ip: Some(dst_ip),
-        }),
-        (Some(src_ip), dst_ip) => Some(Ipv6Rewrite {
-            src_ip: Some(src_ip),
-            dst_ip,
-        }),
         (None, None) => None,
+        (_, _) => Some(Ipv6Rewrite {
+            src_ip: cli.src_ipv6,
+            dst_ip: cli.dst_ipv6,
+        }),
     };
 
-    let port_rewrite = match (cli.src_port, cli.dst_port) {
-        (src_port, Some(dst_port)) => Some(PortRewrite {
-            src_port,
-            dst_port: Some(dst_port),
-        }),
-        (Some(src_port), dst_port) => Some(PortRewrite {
-            src_port: Some(src_port),
-            dst_port,
-        }),
+    let transport_rewrite = match (cli.src_port, cli.dst_port) {
         (None, None) => None,
+        (_, _) => Some(PortRewrite {
+            src_port: cli.src_port,
+            dst_port: cli.dst_port,
+        })
     };
 
-    let vlan_rewrite = cli.vlan_id.map(|id| VlanRewrite { vlan_id: id });
-
+    let ip_rewrite = match (&ipv4_rewrite, &ipv6_rewrite) {
+        (None, None) => None,
+        (_, _) => Some(IpRewrite {
+            ipv4_rewrite,
+            ipv6_rewrite,
+        }),
+    };
+    
+    
     Ok(Rewrite {
-        mac_rewrite,
-        ipv4_rewrite,
-        ipv6_rewrite,
-        port_rewrite,
-        vlan_rewrite,
+        datalink_rewrite,
+        ip_rewrite,
+        transport_rewrite,
     })
 }
