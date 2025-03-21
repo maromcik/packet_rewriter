@@ -1,10 +1,10 @@
 extern crate core;
 
 use crate::error::{AppError, AppErrorKind};
-use crate::network::cap::PacketCaptureGeneric;
+use crate::network::capture::PacketCaptureGeneric;
 use crate::network::interface::NetworkConfig;
 use crate::network::parse::parse_rewrites;
-use crate::network::rewrite::cap_rewrite;
+use crate::network::listen::cap_rewrite;
 use clap::Parser;
 use pcap::{Active, Offline};
 use pnet::datalink::MacAddr;
