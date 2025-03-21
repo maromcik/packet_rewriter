@@ -47,5 +47,6 @@ where
             sleep(delay);
         }
     }
+    println!("Capture exited");
     Ok(())
 }
