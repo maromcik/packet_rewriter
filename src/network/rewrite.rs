@@ -1,7 +1,7 @@
 use crate::network::cap::PacketCapture;
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::interface::{get_network_channel, NetworkConfig};
-use crate::network::packet::{DataLinkPacket, IpPacket, NetworkPacket};
+use crate::network::packet::{DataLinkPacket, IpPacket, NetworkPacket, TransportPacket};
 use pcap::{Activated, State};
 use pnet::datalink::MacAddr;
 use pnet::packet::dns::MutableDnsPacket;
@@ -81,15 +81,10 @@ where
         ))?;
 
         let mut buffer = vec![0; packet.packet().len()];
-        
         let mut datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet)?;
-        let ip_packet = datalink_packet
-            .rewrite(&rewrite.datalink_rewrite)
-            .get_next_layer();
-        if let Some(mut packet) = ip_packet {
-            packet.rewrite(&rewrite.ip_rewrite);
-        }
+        rewrite_packet(&mut datalink_packet, &rewrite);
 
+        
         let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Could not construct an EthernetPacket",
@@ -106,6 +101,18 @@ where
         }
     }
     Ok(())
+}
+
+pub fn rewrite_packet<'a>(packet: &'a mut DataLinkPacket<'a>, rewrite: &Rewrite) -> Option<()> {
+    let _ = packet
+        .rewrite(&rewrite.datalink_rewrite)
+        .get_next_layer()?
+        .rewrite(&rewrite.ip_rewrite)
+        .get_next_layer()?
+        .rewrite(&rewrite.transport_rewrite);
+    
+    Some(())
+
 }
 
 pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrite: &DataLinkRewrite) {
@@ -196,76 +203,52 @@ pub fn rewrite_ipv6(ipv6_packet: &mut MutableIpv6Packet, rewrite: &IpRewrite) {
     };
 }
 
-// pub fn rewrite_port(
-//     packet: &mut MutableEthernetPacket,
-//     rewrites: &Rewrite,
-// ) -> Result<(), NetworkError> {
-//     let Some(rewrite) = &rewrites.transport_rewrite else {
-//         return Ok(());
-//     };
-//
-//     let Some(mut ip_packet) = get_ip_packet(packet)? else {
-//         return Ok(());
-//     };
-//
-//     match ip_packet.get_next_header_protocol() {
-//         IpNextHeaderProtocols::Tcp => {
-//             let mut tcp_packet =
-//                 MutableTcpPacket::new(ip_packet.get_mut_payload()).ok_or(NetworkError::new(
-//                     NetworkErrorKind::PacketConstructionError,
-//                     "TCP Packet is empty",
-//                 ))?;
-//             if let Some(src) = rewrite.src_port {
-//                 tcp_packet.set_source(src);
-//             }
-//             if let Some(dst) = rewrite.dst_port {
-//                 tcp_packet.set_destination(dst);
-//             };
-//             Ok(())
-//         }
-//         IpNextHeaderProtocols::Udp => {
-//             let mut udp_packet =
-//                 MutableUdpPacket::new(ip_packet.get_mut_payload()).ok_or(NetworkError::new(
-//                     NetworkErrorKind::PacketConstructionError,
-//                     "UDP Packet is empty",
-//                 ))?;
-//             if let Some(src) = rewrite.src_port {
-//                 udp_packet.set_source(src);
-//             }
-//             if let Some(dst) = rewrite.dst_port {
-//                 udp_packet.set_destination(dst);
-//             };
-//
-//             let dns = MutableDnsPacket::new(udp_packet.payload_mut()).unwrap();
-//             for q in dns.get_queries_iter() {
-//                 println!("query: {:?}", String::from_utf8(q.get_qname()));
-//             }
-//             Ok(())
-//         }
-//         _ => Ok(()),
-//     }
-// }
+pub fn rewrite_udp(packet: &mut MutableUdpPacket, rewrite: &Option<PortRewrite>) {
+    let Some(rewrite) = rewrite else {
+        return;
+    };
 
-pub fn get_ip_packet<'a>(
-    packet: &'a mut MutableEthernetPacket,
-) -> Result<Option<IpPacket<'a>>, NetworkError> {
-    match packet.get_ethertype() {
-        EtherTypes::Ipv4 => {
-            let ipv4_packet =
-                MutableIpv4Packet::new(packet.payload_mut()).ok_or(NetworkError::new(
-                    NetworkErrorKind::PacketConstructionError,
-                    "IPv4 packet is empty",
-                ))?;
-            Ok(Some(IpPacket::Ipv4Packet(ipv4_packet)))
-        }
-        EtherTypes::Ipv6 => {
-            let ipv6_packet =
-                MutableIpv6Packet::new(packet.payload_mut()).ok_or(NetworkError::new(
-                    NetworkErrorKind::PacketConstructionError,
-                    "IPv4 packet is empty",
-                ))?;
-            Ok(Some(IpPacket::Ipv6Packet(ipv6_packet)))
-        }
-        _ => Ok(None),
+    if let Some(src) = rewrite.src_port {
+        println!(
+            "src_port: {}, dst_port: {}, changing src to: {}",
+            packet.get_source(),
+            packet.get_destination(),
+            src
+        );
+        packet.set_source(src);
+    }
+    if let Some(dst) = rewrite.dst_port {
+        println!(
+            "src_port: {}, dst_port: {}, changing src to: {}",
+            packet.get_source(),
+            packet.get_destination(),
+            dst
+        );
+        packet.set_destination(dst);
+    }
+}
+
+pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>) {
+    let Some(rewrite) = rewrite else {
+        return;
+    };
+
+    if let Some(src) = rewrite.src_port {
+        println!(
+            "src_port: {}, dst_port: {}, changing src to: {}",
+            packet.get_source(),
+            packet.get_destination(),
+            src
+        );
+        packet.set_source(src);
+    }
+    if let Some(dst) = rewrite.dst_port {
+        println!(
+            "src_port: {}, dst_port: {}, changing src to: {}",
+            packet.get_source(),
+            packet.get_destination(),
+            dst
+        );
+        packet.set_destination(dst);
     }
 }

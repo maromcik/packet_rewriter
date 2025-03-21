@@ -1,7 +1,7 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::rewrite::{
-    rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_vlan, DataLinkRewrite, IpRewrite, MacRewrite,
-    Rewrite, VlanRewrite,
+    rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_tcp, rewrite_udp, rewrite_vlan,
+    DataLinkRewrite, IpRewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite,
 };
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
@@ -11,6 +11,7 @@ use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::{MutableVlanPacket, VlanPacket};
 use pnet::packet::{MutablePacket, Packet};
+use pnet::packet::dns::MutableDnsPacket;
 
 pub trait NetworkPacket {
     type ThisLayer<'a>;
@@ -35,14 +36,12 @@ pub enum TransportPacket<'a> {
     Tcp(MutableTcpPacket<'a>),
 }
 
+pub enum ApplicationPacket<'a> {
+    DnsPacket(MutableDnsPacket<'a>),
+}
+
 impl<'a> From<MutableEthernetPacket<'a>> for DataLinkPacket<'a> {
     fn from(value: MutableEthernetPacket<'a>) -> Self {
-        // if let EtherTypes::Vlan = value.get_ethertype() {
-        //     let vlan_packet = MutableVlanPacket::new(value).ok_or(
-        //         NetworkError::new(NetworkErrorKind::PacketConstructionError, "Invalid VLAN packet")
-        //     ).unwrap();
-        //     return DataLinkPacket::VlanPacket(vlan_packet)
-        // }
         Self::EthPacket(value)
     }
 }
@@ -59,32 +58,12 @@ impl NetworkPacket for DataLinkPacket<'_> {
 
     fn get_next_layer<'a>(&'a mut self) -> Option<Self::NextLayer<'a>> {
         match self {
-            DataLinkPacket::EthPacket(packet) => match packet.get_ethertype() {
-                EtherTypes::Ipv4 => {
-                    let ipv4_packet =
-                        MutableIpv4Packet::new(packet.payload_mut())?;
-                    Some(IpPacket::Ipv4Packet(ipv4_packet))
-                }
-                EtherTypes::Ipv6 => {
-                    let ipv6_packet =
-                        MutableIpv6Packet::new(packet.payload_mut())?;
-                    Some(IpPacket::Ipv6Packet(ipv6_packet))
-                }
-                _ => None
-            },
-            DataLinkPacket::VlanPacket(packet) => match packet.get_ethertype() {
-                EtherTypes::Ipv4 => {
-                    let ipv4_packet =
-                        MutableIpv4Packet::new(packet.payload_mut())?;
-                    Some(IpPacket::Ipv4Packet(ipv4_packet))
-                }
-                EtherTypes::Ipv6 => {
-                    let ipv6_packet =
-                        MutableIpv6Packet::new(packet.payload_mut())?;
-                    Some(IpPacket::Ipv6Packet(ipv6_packet))
-                }
-                _ => None,
-            },
+            DataLinkPacket::EthPacket(packet) => {
+                get_ip_packet(packet.get_ethertype(), packet.payload_mut())
+            }
+            DataLinkPacket::VlanPacket(packet) => {
+                get_ip_packet(packet.get_ethertype(), packet.payload_mut())
+            }
         }
     }
 
@@ -103,12 +82,30 @@ impl NetworkPacket for DataLinkPacket<'_> {
     }
 }
 
+fn get_ip_packet<'a>(ether_type: EtherType, payload: &'a mut [u8]) -> Option<IpPacket<'a>> {
+    match ether_type {
+        EtherTypes::Ipv4 => {
+            let ipv4_packet = MutableIpv4Packet::new(payload)?;
+            Some(IpPacket::Ipv4Packet(ipv4_packet))
+        }
+        EtherTypes::Ipv6 => {
+            let ipv6_packet = MutableIpv6Packet::new(payload)?;
+            Some(IpPacket::Ipv6Packet(ipv6_packet))
+        }
+        _ => None,
+    }
+}
+
 impl<'a> DataLinkPacket<'a> {
-    pub fn from_buffer(value: &'a mut [u8], packet: &EthernetPacket) -> Result<DataLinkPacket<'a>, NetworkError> {
-        let mut new_packet = MutableEthernetPacket::new(&mut value[..]).ok_or(NetworkError::new(
-            NetworkErrorKind::PacketConstructionError,
-            "Could not construct an EthernetPacket",
-        ))?;
+    pub fn from_buffer(
+        value: &'a mut [u8],
+        packet: &EthernetPacket,
+    ) -> Result<DataLinkPacket<'a>, NetworkError> {
+        let mut new_packet =
+            MutableEthernetPacket::new(&mut value[..]).ok_or(NetworkError::new(
+                NetworkErrorKind::PacketConstructionError,
+                "Could not construct an EthernetPacket",
+            ))?;
         new_packet.clone_from(packet);
         Ok(DataLinkPacket::EthPacket(new_packet))
     }
@@ -119,7 +116,8 @@ impl<'a> DataLinkPacket<'a> {
     pub fn new_vlan(packet: MutableVlanPacket<'a>) -> Self {
         DataLinkPacket::VlanPacket(packet)
     }
-    pub fn get_ether_type(&'a mut self) -> EtherType {
+
+    pub fn get_ether_type(&'a self) -> EtherType {
         match self {
             DataLinkPacket::EthPacket(p) => p.get_ethertype(),
             DataLinkPacket::VlanPacket(p) => p.get_ethertype(),
@@ -127,9 +125,7 @@ impl<'a> DataLinkPacket<'a> {
     }
 
     pub fn rewrite(&'a mut self, rewrite: &Option<DataLinkRewrite>) -> &mut DataLinkPacket<'a> {
-        let Some(rewrite) = &rewrite else {
-            return self
-        };
+        let Some(rewrite) = &rewrite else { return self };
         match self {
             DataLinkPacket::EthPacket(packet) => rewrite_mac(packet, rewrite),
             DataLinkPacket::VlanPacket(packet) => rewrite_vlan(packet, rewrite),
@@ -151,23 +147,21 @@ impl NetworkPacket for IpPacket<'_> {
 
     fn get_next_layer<'a>(&'a mut self) -> Option<Self::NextLayer<'a>> {
         match self {
-            IpPacket::Ipv4Packet(_) | IpPacket::Ipv6Packet(_) => match self
-                .get_next_header_protocol()
-            {
-                IpNextHeaderProtocols::Tcp => {
-                    let tcp_packet = TransportPacket::Tcp(
-                        MutableTcpPacket::new(self.get_mut_payload())?,
-                    );
-                    Some(tcp_packet)
+            IpPacket::Ipv4Packet(_) | IpPacket::Ipv6Packet(_) => {
+                match self.get_next_header_protocol() {
+                    IpNextHeaderProtocols::Tcp => {
+                        let tcp_packet =
+                            Self::NextLayer::Tcp(MutableTcpPacket::new(self.get_mut_payload())?);
+                        Some(tcp_packet)
+                    }
+                    IpNextHeaderProtocols::Udp => {
+                        let udp_packet =
+                            Self::NextLayer::Udp(MutableUdpPacket::new(self.get_mut_payload())?);
+                        Some(udp_packet)
+                    }
+                    _ => None,
                 }
-                IpNextHeaderProtocols::Udp => {
-                    let udp_packet = TransportPacket::Udp(
-                        MutableUdpPacket::new(self.get_mut_payload())?,
-                    );
-                    Some(udp_packet)
-                }
-                _ => None,
-            },
+            }
         }
     }
 
@@ -195,9 +189,7 @@ impl<'a> IpPacket<'a> {
     }
 
     pub fn rewrite(&'a mut self, rewrite: &Option<IpRewrite>) -> &'a mut IpPacket<'a> {
-        let Some(rewrite) = &rewrite else {
-            return self
-        };
+        let Some(rewrite) = &rewrite else { return self };
         match self {
             IpPacket::Ipv4Packet(packet) => rewrite_ipv4(packet, rewrite),
             IpPacket::Ipv6Packet(packet) => rewrite_ipv6(packet, rewrite),
@@ -211,14 +203,68 @@ impl NetworkPacket for TransportPacket<'_> {
     type NextLayer<'a> = ();
 
     fn get_next_layer<'a>(&'a mut self) -> Option<Self::ThisLayer<'a>> {
-        todo!()
+        match self {
+            TransportPacket::Udp(packet) => {
+                todo!()
+            }
+            TransportPacket::Tcp(packet) => {
+                todo!()
+            }
+        }
     }
 
     fn get_mut_payload<'a>(&'a mut self) -> &'a mut [u8] {
-        todo!()
+        match self {
+            TransportPacket::Udp(packet) => packet.payload_mut(),
+            TransportPacket::Tcp(packet) => packet.payload_mut(),
+        }
     }
 
     fn get_payload<'a>(&'a self) -> &'a [u8] {
-        todo!()
+        match self {
+            TransportPacket::Udp(packet) => packet.payload(),
+            TransportPacket::Tcp(packet) => packet.payload(),
+        }
+    }
+}
+
+impl<'a> TransportPacket<'a> {
+    pub fn rewrite(&'a mut self, rewrite: &Option<PortRewrite>) -> &'a mut TransportPacket<'a> {
+        match self {
+            TransportPacket::Udp(packet) => rewrite_udp(packet, &rewrite),
+            TransportPacket::Tcp(packet) => rewrite_tcp(packet, &rewrite),
+        }
+        self
+    }
+
+    pub fn get_source(&'a self) -> u16 {
+        match self {
+            TransportPacket::Udp(packet) => packet.get_source(),
+            TransportPacket::Tcp(packet) => packet.get_source(),
+        }
+    }
+
+    pub fn set_source(&'a mut self, port: u16) {
+        match self {
+            TransportPacket::Udp(packet) => {
+                packet.set_source(port);
+            }
+            TransportPacket::Tcp(packet) => packet.set_source(port),
+        }
+    }
+    pub fn get_destination(&'a self) -> u16 {
+        match self {
+            TransportPacket::Udp(packet) => packet.get_destination(),
+            TransportPacket::Tcp(packet) => packet.get_destination(),
+        }
+    }
+
+    pub fn set_destination(&'a mut self, port: u16) {
+        match self {
+            TransportPacket::Udp(packet) => {
+                packet.set_destination(port);
+            }
+            TransportPacket::Tcp(packet) => packet.set_destination(port),
+        }
     }
 }
