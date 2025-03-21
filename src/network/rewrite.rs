@@ -7,7 +7,7 @@ use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use std::net::{Ipv4Addr, Ipv6Addr};
-
+use std::ptr::dangling;
 
 #[derive(Default)]
 pub struct Rewrite {
@@ -54,8 +54,9 @@ pub struct VlanRewrite {
     pub vlan_id: u16,
 }
 
-pub fn rewrite_packet<'a>(mut packet: &'a mut DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
+pub fn rewrite_packet<'a>(mut packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
     packet
+        .rewrite(&rewrite.datalink_rewrite)
         .unpack_vlan()?
         .rewrite(&rewrite.datalink_rewrite)
         .get_next_layer()?
