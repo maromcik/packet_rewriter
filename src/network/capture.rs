@@ -1,3 +1,4 @@
+use std::time::Duration;
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use pcap::{Activated, Active, Capture, Device, Offline, State};
 
@@ -38,6 +39,7 @@ where
 
         let capture = Capture::from_device(target)?
             .promisc(true)
+            .timeout(10000)
             .immediate_mode(true)
             .open()
             .map_err(NetworkError::from)?;
