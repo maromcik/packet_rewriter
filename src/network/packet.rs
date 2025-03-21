@@ -12,6 +12,7 @@ use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use pnet::packet::{MutablePacket, Packet};
+use pnet::packet::icmp::MutableIcmpPacket;
 
 pub trait NetworkPacket {
     type ThisLayer<'a>;
@@ -34,6 +35,7 @@ pub enum IpPacket<'a> {
 pub enum TransportPacket<'a> {
     Udp(MutableUdpPacket<'a>),
     Tcp(MutableTcpPacket<'a>),
+    Icmp(MutableIcmpPacket<'a>),
 }
 
 pub enum ApplicationPacket<'a> {
@@ -87,7 +89,7 @@ fn get_ip_packet(ether_type: EtherType, payload: &mut [u8]) -> Option<IpPacket> 
         EtherTypes::Ipv4 => {
             let ipv4_packet = MutableIpv4Packet::new(payload)?;
             Some(IpPacket::Ipv4Packet(ipv4_packet))
-        }
+        },
         EtherTypes::Ipv6 => {
             let ipv6_packet = MutableIpv6Packet::new(payload)?;
             Some(IpPacket::Ipv6Packet(ipv6_packet))
@@ -154,6 +156,11 @@ impl NetworkPacket for IpPacket<'_> {
         match self {
             IpPacket::Ipv4Packet(_) | IpPacket::Ipv6Packet(_) => {
                 match self.get_next_header_protocol() {
+                    IpNextHeaderProtocols::Icmp => {
+                        let icmp_packet =
+                            Self::NextLayer::Icmp(MutableIcmpPacket::new(self.get_mut_payload())?);
+                        Some(icmp_packet)
+                    }
                     IpNextHeaderProtocols::Tcp => {
                         let tcp_packet =
                             Self::NextLayer::Tcp(MutableTcpPacket::new(self.get_mut_payload())?);
@@ -213,6 +220,7 @@ impl NetworkPacket for TransportPacket<'_> {
                 MutableDnsPacket::new(packet.payload_mut())?,
             )),
             TransportPacket::Tcp(packet) => None,
+            TransportPacket::Icmp(packet) => None,
         }
     }
 
@@ -220,6 +228,7 @@ impl NetworkPacket for TransportPacket<'_> {
         match self {
             TransportPacket::Udp(packet) => packet.payload_mut(),
             TransportPacket::Tcp(packet) => packet.payload_mut(),
+            TransportPacket::Icmp(packet) => packet.payload_mut(),
         }
     }
 
@@ -227,6 +236,7 @@ impl NetworkPacket for TransportPacket<'_> {
         match self {
             TransportPacket::Udp(packet) => packet.payload(),
             TransportPacket::Tcp(packet) => packet.payload(),
+            TransportPacket::Icmp(packet) => packet.payload(),
         }
     }
 }
@@ -236,6 +246,7 @@ impl<'a> TransportPacket<'a> {
         match self {
             TransportPacket::Udp(ref mut packet) => rewrite_udp(packet, rewrite),
             TransportPacket::Tcp(ref mut packet) => rewrite_tcp(packet, rewrite),
+            TransportPacket::Icmp(_) => {},
         }
         self
     }

@@ -54,7 +54,7 @@ pub struct VlanRewrite {
     pub vlan_id: u16,
 }
 
-pub fn rewrite_packet<'a>(mut packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
+pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
     packet
         .rewrite(&rewrite.datalink_rewrite)
         .unpack_vlan()?
