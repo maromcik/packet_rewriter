@@ -20,8 +20,8 @@ where
     let mut channel = get_network_channel(&net_config)?;
     let mut cap = capture.get_capture();
     println!("Capture ready");
-    while let Ok(cap_packet) = cap.next_packet() {
-        println!("Packet captured");
+    loop {
+        let cap_packet = cap.next_packet()?;
         let packet = EthernetPacket::new(cap_packet.data).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Invalid EthernetPacket",
