@@ -1,12 +1,12 @@
-use std::thread::sleep;
-use pcap::{Activated, State};
-use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
-use pnet::packet::Packet;
 use crate::network::capture::PacketCapture;
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::interface::{get_network_channel, NetworkConfig};
 use crate::network::packet::DataLinkPacket;
 use crate::network::rewrite::{rewrite_packet, Rewrite};
+use pcap::{Activated, Error, State};
+use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
+use pnet::packet::Packet;
+use std::thread::sleep;
 
 pub fn cap_rewrite<T>(
     mut capture: impl PacketCapture<T>,
@@ -21,7 +21,17 @@ where
     let mut cap = capture.get_capture();
     println!("Capture ready");
     loop {
-        let cap_packet = cap.next_packet()?;
+        let cap_packet = match cap.next_packet() {
+            Ok(packet) => packet,
+            Err(e) => match e {
+                Error::TimeoutExpired => {
+                    continue;
+                }
+                e => {
+                    return Err(NetworkError::from(e));
+                }
+            },
+        };
         let packet = EthernetPacket::new(cap_packet.data).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Invalid EthernetPacket",
@@ -30,7 +40,6 @@ where
         let mut buffer = vec![0; packet.packet().len()];
         let datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet)?;
         rewrite_packet(datalink_packet, &rewrite);
-
 
         let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
@@ -47,6 +56,4 @@ where
             sleep(delay);
         }
     }
-    println!("Capture exited");
-    Ok(())
 }
