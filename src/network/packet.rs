@@ -133,10 +133,15 @@ impl<'a> DataLinkPacket<'a> {
         self
     }
 
-    pub fn unpack_vlan(self) -> DataLinkPacket<'a> {
+    pub fn unpack_vlan(&'a mut self) -> Option<DataLinkPacket<'a>> {
         match self {
-            DataLinkPacket::EthPacket(_) => self,
-            DataLinkPacket::VlanPacket(packet) => DataLinkPacket::VlanPacket(packet),
+            DataLinkPacket::EthPacket(ref mut packet) => {
+                if packet.get_ethertype() == EtherTypes::Vlan {
+                    return Some(DataLinkPacket::VlanPacket(MutableVlanPacket::new(packet.payload_mut())?))
+                }
+                Some(DataLinkPacket::EthPacket(MutableEthernetPacket::new(packet.packet_mut())?))
+            },
+            DataLinkPacket::VlanPacket(packet) => Some(DataLinkPacket::VlanPacket(MutableVlanPacket::new(packet.packet_mut())?)),
         }
     }
 }
