@@ -26,7 +26,10 @@ where
             Err(e) => match e {
                 Error::TimeoutExpired => {
                     continue;
-                }
+                },
+                Error::NoMorePackets => {
+                    return Ok(())
+                },
                 e => {
                     return Err(NetworkError::from(e));
                 }
