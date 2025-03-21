@@ -81,8 +81,8 @@ where
         ))?;
 
         let mut buffer = vec![0; packet.packet().len()];
-
-        let mut datalink_packet = DataLinkPacket::from_buffer(&mut buffer)?;
+        
+        let mut datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet)?;
         let ip_packet = datalink_packet
             .rewrite(&rewrite.datalink_rewrite)
             .get_next_layer();

@@ -3,7 +3,7 @@ use crate::network::rewrite::{
     rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_vlan, DataLinkRewrite, IpRewrite, MacRewrite,
     Rewrite, VlanRewrite,
 };
-use pnet::packet::ethernet::{EtherType, EtherTypes, MutableEthernetPacket};
+use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::MutableIpv4Packet;
 use pnet::packet::ipv6::MutableIpv6Packet;
@@ -70,7 +70,7 @@ impl NetworkPacket for DataLinkPacket<'_> {
                         MutableIpv6Packet::new(packet.payload_mut())?;
                     Some(IpPacket::Ipv6Packet(ipv6_packet))
                 }
-                _ => None,
+                _ => None
             },
             DataLinkPacket::VlanPacket(packet) => match packet.get_ethertype() {
                 EtherTypes::Ipv4 => {
@@ -104,11 +104,13 @@ impl NetworkPacket for DataLinkPacket<'_> {
 }
 
 impl<'a> DataLinkPacket<'a> {
-    pub fn from_buffer(value: &'a mut Vec<u8>) -> Result<DataLinkPacket<'a>, NetworkError> {
-        Ok(DataLinkPacket::EthPacket(MutableEthernetPacket::new(&mut value[..]).ok_or(NetworkError::new(
+    pub fn from_buffer(value: &'a mut [u8], packet: &EthernetPacket) -> Result<DataLinkPacket<'a>, NetworkError> {
+        let mut new_packet = MutableEthernetPacket::new(&mut value[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
-            "Could not construct a EthernetPacket",
-        ))?))
+            "Could not construct an EthernetPacket",
+        ))?;
+        new_packet.clone_from(packet);
+        Ok(DataLinkPacket::EthPacket(new_packet))
     }
     pub fn new_eth(packet: MutableEthernetPacket<'a>) -> Self {
         DataLinkPacket::EthPacket(packet)
