@@ -124,18 +124,18 @@ impl<'a> DataLinkPacket<'a> {
         }
     }
 
-    pub fn rewrite(&'a mut self, rewrite: &Option<DataLinkRewrite>) -> &'a mut DataLinkPacket<'a> {
+    pub fn rewrite(mut self, rewrite: &Option<DataLinkRewrite>) -> DataLinkPacket<'a> {
         let Some(rewrite) = &rewrite else { return self };
         match self {
-            DataLinkPacket::EthPacket(packet) => rewrite_mac(packet, rewrite),
-            DataLinkPacket::VlanPacket(packet) => rewrite_vlan(packet, rewrite),
+            DataLinkPacket::EthPacket(ref mut packet) => rewrite_mac(packet, rewrite),
+            DataLinkPacket::VlanPacket(ref mut packet) => rewrite_vlan(packet, rewrite),
         }
         self
     }
 
     pub fn unpack_vlan(self) -> DataLinkPacket<'a> {
         match self {
-            DataLinkPacket::EthPacket(packet) => DataLinkPacket::new_eth(packet),
+            DataLinkPacket::EthPacket(_) => self,
             DataLinkPacket::VlanPacket(packet) => DataLinkPacket::VlanPacket(packet),
         }
     }
@@ -188,11 +188,11 @@ impl<'a> IpPacket<'a> {
         }
     }
 
-    pub fn rewrite(&'a mut self, rewrite: &Option<IpRewrite>) -> &'a mut IpPacket<'a> {
+    pub fn rewrite(mut self, rewrite: &Option<IpRewrite>) -> IpPacket<'a> {
         let Some(rewrite) = &rewrite else { return self };
         match self {
-            IpPacket::Ipv4Packet(packet) => rewrite_ipv4(packet, rewrite),
-            IpPacket::Ipv6Packet(packet) => rewrite_ipv6(packet, rewrite),
+            IpPacket::Ipv4Packet(ref mut packet) => rewrite_ipv4(packet, rewrite),
+            IpPacket::Ipv6Packet(ref mut packet) => rewrite_ipv6(packet, rewrite),
         }
         self
     }
@@ -227,10 +227,10 @@ impl NetworkPacket for TransportPacket<'_> {
 }
 
 impl<'a> TransportPacket<'a> {
-    pub fn rewrite(&'a mut self, rewrite: &Option<PortRewrite>) -> &'a mut TransportPacket<'a> {
+    pub fn rewrite(mut self, rewrite: &Option<PortRewrite>) -> TransportPacket<'a> {
         match self {
-            TransportPacket::Udp(packet) => rewrite_udp(packet, rewrite),
-            TransportPacket::Tcp(packet) => rewrite_tcp(packet, rewrite),
+            TransportPacket::Udp(ref mut packet) => rewrite_udp(packet, rewrite),
+            TransportPacket::Tcp(ref mut packet) => rewrite_tcp(packet, rewrite),
         }
         self
     }
