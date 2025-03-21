@@ -1,10 +1,14 @@
-use crate::network::packet::{DataLinkPacket, NetworkPacket};
+use crate::network::packet::{DataLinkPacket, NetworkPacket, TransportPacketIpAddress};
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;
 use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
 use pnet::packet::ipv6::MutableIpv6Packet;
-use pnet::packet::tcp::MutableTcpPacket;
-use pnet::packet::udp::MutableUdpPacket;
+use pnet::packet::tcp::{
+    ipv4_checksum as ipv4_checksum_tcp, ipv6_checksum as ipv6_checksum_tcp, MutableTcpPacket,
+};
+use pnet::packet::udp::{
+    ipv4_checksum as ipv4_checksum_udp, ipv6_checksum as ipv6_checksum_udp, MutableUdpPacket,
+};
 use pnet::packet::vlan::MutableVlanPacket;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ptr::dangling;
@@ -156,52 +160,74 @@ pub fn rewrite_ipv6(ipv6_packet: &mut MutableIpv6Packet, rewrite: &IpRewrite) {
     };
 }
 
-pub fn rewrite_udp(packet: &mut MutableUdpPacket, rewrite: &Option<PortRewrite>) {
-    let Some(rewrite) = rewrite else {
-        return;
+pub fn rewrite_udp(
+    packet: &mut MutableUdpPacket,
+    rewrite: &Option<PortRewrite>,
+    ip_addr_info: &TransportPacketIpAddress,
+) {
+    if let Some(rewrite) = rewrite {
+        if let Some(src) = rewrite.src_port {
+            println!(
+                "src_port: {}, dst_port: {}, changing src to: {}",
+                packet.get_source(),
+                packet.get_destination(),
+                src
+            );
+            packet.set_source(src);
+        }
+        if let Some(dst) = rewrite.dst_port {
+            println!(
+                "src_port: {}, dst_port: {}, changing src to: {}",
+                packet.get_source(),
+                packet.get_destination(),
+                dst
+            );
+            packet.set_destination(dst);
+        }
+    }
+    let checksum = match ip_addr_info {
+        TransportPacketIpAddress::Ipv4(ip_addr) => {
+            ipv4_checksum_udp(&packet.to_immutable(), &ip_addr.src, &ip_addr.dst)
+        }
+        TransportPacketIpAddress::Ipv6(ip_addr) => {
+            ipv6_checksum_udp(&packet.to_immutable(), &ip_addr.src, &ip_addr.dst)
+        }
     };
-
-    if let Some(src) = rewrite.src_port {
-        println!(
-            "src_port: {}, dst_port: {}, changing src to: {}",
-            packet.get_source(),
-            packet.get_destination(),
-            src
-        );
-        packet.set_source(src);
-    }
-    if let Some(dst) = rewrite.dst_port {
-        println!(
-            "src_port: {}, dst_port: {}, changing src to: {}",
-            packet.get_source(),
-            packet.get_destination(),
-            dst
-        );
-        packet.set_destination(dst);
-    }
+    packet.set_checksum(checksum);
 }
 
-pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>) {
-    let Some(rewrite) = rewrite else {
-        return;
+pub fn rewrite_tcp(
+    packet: &mut MutableTcpPacket,
+    rewrite: &Option<PortRewrite>,
+    ip_addr_info: &TransportPacketIpAddress,
+) {
+    if let Some(rewrite) = rewrite {
+        if let Some(src) = rewrite.src_port {
+            println!(
+                "src_port: {}, dst_port: {}, changing src to: {}",
+                packet.get_source(),
+                packet.get_destination(),
+                src
+            );
+            packet.set_source(src);
+        }
+        if let Some(dst) = rewrite.dst_port {
+            println!(
+                "src_port: {}, dst_port: {}, changing src to: {}",
+                packet.get_source(),
+                packet.get_destination(),
+                dst
+            );
+            packet.set_destination(dst);
+        }
     };
-
-    if let Some(src) = rewrite.src_port {
-        println!(
-            "src_port: {}, dst_port: {}, changing src to: {}",
-            packet.get_source(),
-            packet.get_destination(),
-            src
-        );
-        packet.set_source(src);
-    }
-    if let Some(dst) = rewrite.dst_port {
-        println!(
-            "src_port: {}, dst_port: {}, changing src to: {}",
-            packet.get_source(),
-            packet.get_destination(),
-            dst
-        );
-        packet.set_destination(dst);
-    }
+    let checksum = match ip_addr_info {
+        TransportPacketIpAddress::Ipv4(ip_addr) => {
+            ipv4_checksum_tcp(&packet.to_immutable(), &ip_addr.src, &ip_addr.dst)
+        }
+        TransportPacketIpAddress::Ipv6(ip_addr) => {
+            ipv6_checksum_tcp(&packet.to_immutable(), &ip_addr.src, &ip_addr.dst)
+        }
+    };
+    packet.set_checksum(checksum);
 }
