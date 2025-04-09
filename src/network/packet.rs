@@ -1,11 +1,13 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::rewrite::{
     rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_tcp, rewrite_udp, rewrite_vlan,
     DataLinkRewrite, IpRewrite, PortRewrite,
 };
-use pnet::packet::dns::MutableDnsPacket;
+use pnet::packet::dns::{
+    DnsQueryPacket, DnsResponsePacket, MutableDnsPacket, MutableDnsResponsePacket,
+};
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
+use pnet::packet::icmp::MutableIcmpPacket;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::{Ipv4Packet, MutableIpv4Packet};
 use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
@@ -13,7 +15,9 @@ use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use pnet::packet::{MutablePacket, Packet};
-use pnet::packet::icmp::MutableIcmpPacket;
+use std::net::{Ipv4Addr, Ipv6Addr};
+use clap::builder;
+use dns_parser::RData;
 
 pub trait NetworkPacket {
     type ThisLayer<'a>;
@@ -116,7 +120,7 @@ fn get_ip_packet(ether_type: EtherType, payload: &mut [u8]) -> Option<IpPacket> 
         EtherTypes::Ipv4 => {
             let ipv4_packet = MutableIpv4Packet::new(payload)?;
             Some(IpPacket::Ipv4Packet(ipv4_packet))
-        },
+        }
         EtherTypes::Ipv6 => {
             let ipv6_packet = MutableIpv6Packet::new(payload)?;
             Some(IpPacket::Ipv6Packet(ipv6_packet))
@@ -166,11 +170,17 @@ impl<'a> DataLinkPacket<'a> {
         match self {
             DataLinkPacket::EthPacket(ref mut packet) => {
                 if packet.get_ethertype() == EtherTypes::Vlan {
-                    return Some(DataLinkPacket::VlanPacket(MutableVlanPacket::new(packet.payload_mut())?))
+                    return Some(DataLinkPacket::VlanPacket(MutableVlanPacket::new(
+                        packet.payload_mut(),
+                    )?));
                 }
-                Some(DataLinkPacket::EthPacket(MutableEthernetPacket::new(packet.packet_mut())?))
-            },
-            DataLinkPacket::VlanPacket(packet) => Some(DataLinkPacket::VlanPacket(MutableVlanPacket::new(packet.packet_mut())?)),
+                Some(DataLinkPacket::EthPacket(MutableEthernetPacket::new(
+                    packet.packet_mut(),
+                )?))
+            }
+            DataLinkPacket::VlanPacket(packet) => Some(DataLinkPacket::VlanPacket(
+                MutableVlanPacket::new(packet.packet_mut())?,
+            )),
         }
     }
 }
@@ -181,51 +191,54 @@ impl NetworkPacket for IpPacket<'_> {
 
     fn get_next_layer(&mut self) -> Option<Self::NextLayer<'_>> {
         match self {
-            IpPacket::Ipv4Packet(packet) => {
-                match packet.get_next_level_protocol() {
-                    IpNextHeaderProtocols::Icmp => {
-                        let icmp_packet =
-                            Self::NextLayer::Icmp(MutableIcmpPacket::new(self.get_mut_payload())?);
-                        Some(icmp_packet)
-                    }
-                    IpNextHeaderProtocols::Tcp => {
-                        let ip_addr_info = IpPacket::get_transport_packet_ipv4_addr(packet);
-                        let tcp_packet =
-                            Self::NextLayer::Tcp(MutableTcpPacket::new(self.get_mut_payload())?, ip_addr_info);
-                        Some(tcp_packet)
-                    }
-                    IpNextHeaderProtocols::Udp => {
-                        let ip_addr_info = IpPacket::get_transport_packet_ipv4_addr(packet);
-                        let udp_packet =
-                            Self::NextLayer::Udp(MutableUdpPacket::new(self.get_mut_payload())?, ip_addr_info);
-                        Some(udp_packet)
-                    }
-                    _ => None,
+            IpPacket::Ipv4Packet(packet) => match packet.get_next_level_protocol() {
+                IpNextHeaderProtocols::Icmp => {
+                    let icmp_packet =
+                        Self::NextLayer::Icmp(MutableIcmpPacket::new(self.get_mut_payload())?);
+                    Some(icmp_packet)
                 }
+                IpNextHeaderProtocols::Tcp => {
+                    let ip_addr_info = IpPacket::get_transport_packet_ipv4_addr(packet);
+                    let tcp_packet = Self::NextLayer::Tcp(
+                        MutableTcpPacket::new(self.get_mut_payload())?,
+                        ip_addr_info,
+                    );
+                    Some(tcp_packet)
+                }
+                IpNextHeaderProtocols::Udp => {
+                    let ip_addr_info = IpPacket::get_transport_packet_ipv4_addr(packet);
+                    let udp_packet = Self::NextLayer::Udp(
+                        MutableUdpPacket::new(self.get_mut_payload())?,
+                        ip_addr_info,
+                    );
+                    Some(udp_packet)
+                }
+                _ => None,
             },
-                IpPacket::Ipv6Packet(packet) => {
-                match packet.get_next_header() {
-                    IpNextHeaderProtocols::Icmp => {
-                        let icmp_packet =
-                            Self::NextLayer::Icmp(MutableIcmpPacket::new(self.get_mut_payload())?);
-                        Some(icmp_packet)
-                    }
-                    IpNextHeaderProtocols::Tcp => {
-                        let ip_addr_info = IpPacket::get_transport_packet_ipv6_addr(packet);
-                        let tcp_packet =
-                            Self::NextLayer::Tcp(MutableTcpPacket::new(self.get_mut_payload())?, ip_addr_info);
-                        Some(tcp_packet)
-                    }
-                    IpNextHeaderProtocols::Udp => {
-                        let ip_addr_info = IpPacket::get_transport_packet_ipv6_addr(packet);
-                        let udp_packet =
-                            Self::NextLayer::Udp(MutableUdpPacket::new(self.get_mut_payload())?, ip_addr_info);
-                        Some(udp_packet)
-                    }
-                    _ => None,
+            IpPacket::Ipv6Packet(packet) => match packet.get_next_header() {
+                IpNextHeaderProtocols::Icmp => {
+                    let icmp_packet =
+                        Self::NextLayer::Icmp(MutableIcmpPacket::new(self.get_mut_payload())?);
+                    Some(icmp_packet)
                 }
-            }
-                
+                IpNextHeaderProtocols::Tcp => {
+                    let ip_addr_info = IpPacket::get_transport_packet_ipv6_addr(packet);
+                    let tcp_packet = Self::NextLayer::Tcp(
+                        MutableTcpPacket::new(self.get_mut_payload())?,
+                        ip_addr_info,
+                    );
+                    Some(tcp_packet)
+                }
+                IpNextHeaderProtocols::Udp => {
+                    let ip_addr_info = IpPacket::get_transport_packet_ipv6_addr(packet);
+                    let udp_packet = Self::NextLayer::Udp(
+                        MutableUdpPacket::new(self.get_mut_payload())?,
+                        ip_addr_info,
+                    );
+                    Some(udp_packet)
+                }
+                _ => None,
+            },
         }
     }
 
@@ -260,12 +273,20 @@ impl<'a> IpPacket<'a> {
         }
         self
     }
-    pub fn get_transport_packet_ipv4_addr(packet: &mut MutableIpv4Packet) -> TransportPacketIpAddress {
-        TransportPacketIpAddress::Ipv4(TransportPacketIpv4Addresses::new(packet.get_source(), packet.get_destination()))
+    pub fn get_transport_packet_ipv4_addr(
+        packet: &mut MutableIpv4Packet,
+    ) -> TransportPacketIpAddress {
+        TransportPacketIpAddress::Ipv4(TransportPacketIpv4Addresses::new(
+            packet.get_source(),
+            packet.get_destination(),
+        ))
     }
 
     pub fn get_transport_packet_ipv6_addr(packet: &MutableIpv6Packet) -> TransportPacketIpAddress {
-        TransportPacketIpAddress::Ipv6(TransportPacketIpv6Addresses::new(packet.get_source(), packet.get_destination()))
+        TransportPacketIpAddress::Ipv6(TransportPacketIpv6Addresses::new(
+            packet.get_source(),
+            packet.get_destination(),
+        ))
     }
 }
 
@@ -275,9 +296,11 @@ impl NetworkPacket for TransportPacket<'_> {
 
     fn get_next_layer(&mut self) -> Option<Self::NextLayer<'_>> {
         match self {
-            TransportPacket::Udp(packet, _) => Some(ApplicationPacket::DnsPacket(
-                MutableDnsPacket::new(packet.payload_mut())?,
-            )),
+            TransportPacket::Udp(packet, _) => {
+                Some(ApplicationPacket::DnsPacket(
+                    MutableDnsPacket::new(packet.payload_mut())?
+                ))
+            },
             TransportPacket::Tcp(packet, _) => None,
             TransportPacket::Icmp(packet) => None,
         }
@@ -303,9 +326,13 @@ impl NetworkPacket for TransportPacket<'_> {
 impl<'a> TransportPacket<'a> {
     pub fn rewrite(mut self, rewrite: &Option<PortRewrite>) -> TransportPacket<'a> {
         match self {
-            TransportPacket::Udp(ref mut packet, ref ip_addr_info) => rewrite_udp(packet, rewrite, ip_addr_info),
-            TransportPacket::Tcp(ref mut packet, ref ip_addr_info) => rewrite_tcp(packet, rewrite, ip_addr_info),
-            TransportPacket::Icmp(_) => {},
+            TransportPacket::Udp(ref mut packet, ref ip_addr_info) => {
+                rewrite_udp(packet, rewrite, ip_addr_info)
+            }
+            TransportPacket::Tcp(ref mut packet, ref ip_addr_info) => {
+                rewrite_tcp(packet, rewrite, ip_addr_info)
+            }
+            TransportPacket::Icmp(_) => {}
         }
         self
     }
@@ -333,23 +360,49 @@ impl NetworkPacket for ApplicationPacket<'_> {
 }
 
 impl ApplicationPacket<'_> {
-    pub fn print_payload(&self) {
+    pub fn print_payload(&mut self) -> Option<()> {
         match self {
             ApplicationPacket::DnsPacket(packet) => {
-                // for q in packet.get_queries() {
-                //     if let Ok(data) = String::from_utf8(q.qname) {
-                //         println!("QUERY: {}", data);
-                //     } else {
-                //         println!("Error in reading mDNS query")
-                //     }
+                
+                let mut dns_packet = dns_parser::Packet::parse(packet.packet()).unwrap();
+                
+                for q in &dns_packet.questions {
+                    println!("Q: {}", q.qname);
                 }
-                // for r in packet.get_responses() {
-                //     if let Ok(data) = String::from_utf8(r.payload) {
-                //         println!("RESPONSE: {}", data)
-                //     } else {
-                //         println!("Error in reading mDNS response")
-                //     }
-                // }
+                
+                for r in &mut dns_packet.answers {
+                    println!("R: {}", r.name);
+                    match &mut r.data {
+                        RData::A(a) => {
+                            println!("BEFORE: {}", a.0);
+                            
+                            a.0 = Ipv4Addr::from([192, 168, 1, 1]);
+                            println!("AFTER: {}", a.0)
+                            }
+                        RData::AAAA(aaaa) => {println!("AAAA: {}", aaaa.0)}
+                        RData::CNAME(cname) => {println!("CNAME: {}", cname.0)}
+                        RData::MX(_) => {}
+                        RData::NS(_) => {}
+                        RData::PTR(ptr) => {println!("PTR: {}", ptr.0)}
+                        RData::SOA(_) => {}
+                        RData::SRV(_) => {}
+                        RData::TXT(txt) => {
+                                for record in txt.iter() {
+                                    println!("TXT: {:?}", String::from_utf8(Vec::from(record)).unwrap());
+                                }   
+                            }
+                        RData::Unknown(_, _) => {}
+                    }
+                }
+                let mut new_dns = dns_parser::Builder::new_query(1, false);
+                new_dns.add_question(
+                    "pes.sk", false, dns_parser::QueryType::A, dns_parser::QueryClass::IN
+                );
+                
+                packet.set_payload(&new_dns.build().unwrap());
+
+                Some(())
             }
+        }
     }
 }

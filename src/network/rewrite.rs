@@ -177,7 +177,7 @@ pub fn rewrite_udp(
         }
         if let Some(dst) = rewrite.dst_port {
             println!(
-                "src_port: {}, dst_port: {}, changing src to: {}",
+                "src_port: {}, dst_port: {}, changing dst to: {}",
                 packet.get_source(),
                 packet.get_destination(),
                 dst

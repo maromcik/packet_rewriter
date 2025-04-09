@@ -8,3 +8,4 @@ pcap = {  version = "2.2.0", features = ["tokio", "lending-iter", "futures"]}
 pnet = "0.35.0"
 clap = { version = "4.5.32", features = ["derive"] }
 thiserror = "2.0.12"
+dns-parser = { path = "dns-parser" }
