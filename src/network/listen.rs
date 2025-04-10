@@ -41,9 +41,9 @@ where
         ))?;
 
         let mut buffer = vec![0; packet.packet().len()];
-        let mut datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet)?;
+        let datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet)?;
         rewrite_packet(datalink_packet, &rewrite);
-
+        
         let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Could not construct an EthernetPacket",

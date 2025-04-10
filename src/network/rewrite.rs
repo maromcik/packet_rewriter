@@ -1,4 +1,4 @@
-use crate::network::packet::{ApplicationPacket, ApplicationPacketType, DataLinkPacket, NetworkPacket, TransportPacketIpAddress};
+use crate::network::packet::{ApplicationPacket, ApplicationPacketType, DataLinkPacket, FixablePacket, NetworkPacket, TransportPacketIpAddress};
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;
 use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
@@ -59,18 +59,23 @@ pub struct VlanRewrite {
 }
 
 pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
-    let mut data_link_packet = packet
+    let mut data_link_packet = packet.rewrite(&rewrite.datalink_rewrite);
+    let mut vlan_packet = data_link_packet
+        .unpack_vlan()?
         .rewrite(&rewrite.datalink_rewrite);
-    let mut vlan_packet = data_link_packet.unpack_vlan()?
-        .rewrite(&rewrite.datalink_rewrite);
-    let mut ip_packet = vlan_packet.get_next_layer()?
-        .rewrite(&rewrite.ip_rewrite);
-    let mut transport_packet = ip_packet.get_next_layer()?
+    let mut ip_packet = vlan_packet.get_next_layer()?.rewrite(&rewrite.ip_rewrite);
+    let mut transport_packet = ip_packet
+        .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);
-    
-    let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
-    let new_dns_packet = dns_packet.application_packet_type.rewrite()?;
-    transport_packet.set_payload(new_dns_packet.as_slice());
+
+    // let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
+    // let new_dns_packet = dns_packet.application_packet_type.rewrite()?;
+    // transport_packet.set_payload(new_dns_packet.as_slice());
+    // let payload = transport_packet.get_packet().to_vec();
+    // ip_packet.set_payload(payload.as_slice());
+    // let payload = ip_packet.get_packet().to_vec();
+    // data_link_packet.set_payload(payload.as_slice());
+
     Some(())
 }
 
@@ -133,7 +138,6 @@ pub fn rewrite_ipv4(ipv4_packet: &mut MutableIpv4Packet, rewrite: &IpRewrite) {
             dst_ip
         );
         ipv4_packet.set_destination(dst_ip);
-        ipv4_packet.set_checksum(checksum(&ipv4_packet.to_immutable()));
     };
 }
 
@@ -162,10 +166,7 @@ pub fn rewrite_ipv6(ipv6_packet: &mut MutableIpv6Packet, rewrite: &IpRewrite) {
     };
 }
 
-pub fn rewrite_udp(
-    packet: &mut MutableUdpPacket,
-    rewrite: &Option<PortRewrite>,
-) {
+pub fn rewrite_udp(packet: &mut MutableUdpPacket, rewrite: &Option<PortRewrite>) {
     if let Some(rewrite) = rewrite {
         if let Some(src) = rewrite.src_port {
             println!(
@@ -186,14 +187,9 @@ pub fn rewrite_udp(
             packet.set_destination(dst);
         }
     }
-
 }
 
-pub fn rewrite_tcp(
-    packet: &mut MutableTcpPacket,
-    rewrite: &Option<PortRewrite>,
-    ip_addr_info: &TransportPacketIpAddress,
-) {
+pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>) {
     if let Some(rewrite) = rewrite {
         if let Some(src) = rewrite.src_port {
             println!(

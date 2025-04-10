@@ -13,6 +13,7 @@ pub enum NetworkErrorKind {
     RustChannelError,
     ParseAddrError,
     PacketConstructionError,
+    PacketRewriteError,
 }
 
 impl Display for NetworkErrorKind {
@@ -24,6 +25,7 @@ impl Display for NetworkErrorKind {
             NetworkErrorKind::RustChannelError => f.write_str("Rust channel error"),
             NetworkErrorKind::ParseAddrError => f.write_str("Address parse error"),
             NetworkErrorKind::PacketConstructionError => f.write_str("Packet could not be constructed"),
+            NetworkErrorKind::PacketRewriteError=> f.write_str("Packet could not be rewritten"),
         }
     }
 }
