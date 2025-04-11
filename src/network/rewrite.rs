@@ -1,17 +1,12 @@
-use crate::network::packet::{ApplicationPacket, ApplicationPacketType, DataLinkPacket, FixablePacket, NetworkPacket, TransportPacketIpAddress};
+use crate::network::packet::{ApplicationPacket, DataLinkPacket, NetworkPacket};
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;
-use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
+use pnet::packet::ipv4::MutableIpv4Packet;
 use pnet::packet::ipv6::MutableIpv6Packet;
-use pnet::packet::tcp::{
-    ipv4_checksum as ipv4_checksum_tcp, ipv6_checksum as ipv6_checksum_tcp, MutableTcpPacket,
-};
-use pnet::packet::udp::{
-    ipv4_checksum as ipv4_checksum_udp, ipv6_checksum as ipv6_checksum_udp, MutableUdpPacket,
-};
+use pnet::packet::tcp::MutableTcpPacket;
+use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::ptr::dangling;
 
 #[derive(Default)]
 pub struct Rewrite {
@@ -64,11 +59,11 @@ pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> O
         .unpack_vlan()?
         .rewrite(&rewrite.datalink_rewrite);
     let mut ip_packet = vlan_packet.get_next_layer()?.rewrite(&rewrite.ip_rewrite);
-    let mut transport_packet = ip_packet
+    let transport_packet = ip_packet
         .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);
 
-    // let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
+    let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
     // let new_dns_packet = dns_packet.application_packet_type.rewrite()?;
     // transport_packet.set_payload(new_dns_packet.as_slice());
     // let payload = transport_packet.get_packet().to_vec();

@@ -563,7 +563,7 @@ impl ApplicationPacketType<'_> {
                             for record in txt.iter() {
                                 println!(
                                     "TXT: {:?}",
-                                    String::from_utf8(Vec::from(record)).unwrap()
+                                    String::from_utf8(Vec::from(record)).expect("Cannot parse TXT records")
                                 );
                             }
                         }
