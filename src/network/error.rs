@@ -24,8 +24,10 @@ impl Display for NetworkErrorKind {
             NetworkErrorKind::NetworkChannelError => f.write_str("Network channel error"),
             NetworkErrorKind::RustChannelError => f.write_str("Rust channel error"),
             NetworkErrorKind::ParseAddrError => f.write_str("Address parse error"),
-            NetworkErrorKind::PacketConstructionError => f.write_str("Packet could not be constructed"),
-            NetworkErrorKind::PacketRewriteError=> f.write_str("Packet could not be rewritten"),
+            NetworkErrorKind::PacketConstructionError => {
+                f.write_str("Packet could not be constructed")
+            }
+            NetworkErrorKind::PacketRewriteError => f.write_str("Packet could not be rewritten"),
         }
     }
 }

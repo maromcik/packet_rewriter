@@ -3,9 +3,10 @@ extern crate core;
 use crate::error::{AppError, AppErrorKind};
 use crate::network::capture::PacketCaptureGeneric;
 use crate::network::interface::NetworkConfig;
-use crate::network::parse::parse_rewrites;
 use crate::network::listen::cap_rewrite;
+use crate::network::parse::parse_rewrites;
 use clap::Parser;
+use env_logger::Env;
 use pcap::{Active, Offline};
 use pnet::datalink::MacAddr;
 use std::error::Error;
@@ -95,6 +96,8 @@ struct Cli {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
+    dotenvy::dotenv().ok();
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
     let net_config = NetworkConfig {
         output_device: cli.output_device.clone(),
         interval: cli.interval.map(Duration::from_millis),

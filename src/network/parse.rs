@@ -1,5 +1,8 @@
 use crate::network::error::NetworkError;
-use crate::network::rewrite::{DataLinkRewrite, IpRewrite, Ipv4Rewrite, Ipv6Rewrite, MacRewrite, PortRewrite, Rewrite, VlanRewrite};
+use crate::network::rewrite::{
+    DataLinkRewrite, IpRewrite, Ipv4Rewrite, Ipv6Rewrite, MacRewrite, PortRewrite, Rewrite,
+    VlanRewrite,
+};
 use crate::Cli;
 
 pub fn parse_rewrites(cli: &Cli) -> Result<Rewrite, NetworkError> {
@@ -9,9 +12,9 @@ pub fn parse_rewrites(cli: &Cli) -> Result<Rewrite, NetworkError> {
         (_, _) => Some(MacRewrite {
             src_mac: cli.src_mac,
             dst_mac: cli.dst_mac,
-        })
+        }),
     };
-    
+
     let datalink_rewrite = Some(DataLinkRewrite {
         mac_rewrite,
         vlan_rewrite,
@@ -38,7 +41,7 @@ pub fn parse_rewrites(cli: &Cli) -> Result<Rewrite, NetworkError> {
         (_, _) => Some(PortRewrite {
             src_port: cli.src_port,
             dst_port: cli.dst_port,
-        })
+        }),
     };
 
     let ip_rewrite = match (&ipv4_rewrite, &ipv6_rewrite) {
@@ -48,8 +51,7 @@ pub fn parse_rewrites(cli: &Cli) -> Result<Rewrite, NetworkError> {
             ipv6_rewrite,
         }),
     };
-    
-    
+
     Ok(Rewrite {
         datalink_rewrite,
         ip_rewrite,

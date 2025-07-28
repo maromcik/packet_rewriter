@@ -1,4 +1,5 @@
 use crate::network::packet::{ApplicationPacket, DataLinkPacket, NetworkPacket};
+use log::debug;
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;
 use pnet::packet::ipv4::MutableIpv4Packet;
@@ -62,9 +63,9 @@ pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> O
     let transport_packet = ip_packet
         .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);
-
-    let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
-    let new_dns_packet = dns_packet.application_packet_type.rewrite()?;
+    //
+    // let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
+    // let new_dns_packet = dns_packet.application_packet_type.rewrite()?;
     // transport_packet.set_payload(new_dns_packet.as_slice());
     // let payload = transport_packet.get_packet().to_vec();
     // ip_packet.set_payload(payload.as_slice());
@@ -79,7 +80,7 @@ pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrite: &DataLinkRewrite
         return;
     };
     if let Some(src_mac) = rewrite.src_mac {
-        println!(
+        debug!(
             "src_mac: {}, dst_mac: {}, changing src to: {}",
             packet.get_source(),
             packet.get_destination(),
@@ -89,7 +90,7 @@ pub fn rewrite_mac(packet: &mut MutableEthernetPacket, rewrite: &DataLinkRewrite
     }
 
     if let Some(dst_mac) = rewrite.dst_mac {
-        println!(
+        debug!(
             "src_mac: {}, dst_mac: {}, changing dst to: {}",
             packet.get_source(),
             packet.get_destination(),
@@ -103,7 +104,7 @@ pub fn rewrite_vlan(vlan_packet: &mut MutableVlanPacket, rewrite: &DataLinkRewri
     let Some(rewrite) = &rewrite.vlan_rewrite else {
         return;
     };
-    println!(
+    debug!(
         "vlan_id: {}, changing to: {}",
         vlan_packet.get_vlan_identifier(),
         rewrite.vlan_id
@@ -117,7 +118,7 @@ pub fn rewrite_ipv4(ipv4_packet: &mut MutableIpv4Packet, rewrite: &IpRewrite) {
     };
 
     if let Some(src_ip) = rewrite.src_ip {
-        println!(
+        debug!(
             "src_ip: {}, dst_ip: {}, changing src to: {}",
             ipv4_packet.get_source(),
             ipv4_packet.get_destination(),
@@ -126,7 +127,7 @@ pub fn rewrite_ipv4(ipv4_packet: &mut MutableIpv4Packet, rewrite: &IpRewrite) {
         ipv4_packet.set_source(src_ip)
     }
     if let Some(dst_ip) = rewrite.dst_ip {
-        println!(
+        debug!(
             "src_ip: {}, dst_ip: {}, changing dst to: {}",
             ipv4_packet.get_source(),
             ipv4_packet.get_destination(),
@@ -142,7 +143,7 @@ pub fn rewrite_ipv6(ipv6_packet: &mut MutableIpv6Packet, rewrite: &IpRewrite) {
     };
 
     if let Some(src_ip) = rewrite.src_ip {
-        println!(
+        debug!(
             "src_ip: {}, dst_ip: {}, changing src to: {}",
             ipv6_packet.get_source(),
             ipv6_packet.get_destination(),
@@ -151,7 +152,7 @@ pub fn rewrite_ipv6(ipv6_packet: &mut MutableIpv6Packet, rewrite: &IpRewrite) {
         ipv6_packet.set_source(src_ip)
     }
     if let Some(dst_ip) = rewrite.dst_ip {
-        println!(
+        debug!(
             "src_ip: {}, dst_ip: {}, changing dst to: {}",
             ipv6_packet.get_source(),
             ipv6_packet.get_destination(),
@@ -164,7 +165,7 @@ pub fn rewrite_ipv6(ipv6_packet: &mut MutableIpv6Packet, rewrite: &IpRewrite) {
 pub fn rewrite_udp(packet: &mut MutableUdpPacket, rewrite: &Option<PortRewrite>) {
     if let Some(rewrite) = rewrite {
         if let Some(src) = rewrite.src_port {
-            println!(
+            debug!(
                 "src_port: {}, dst_port: {}, changing src to: {}",
                 packet.get_source(),
                 packet.get_destination(),
@@ -173,7 +174,7 @@ pub fn rewrite_udp(packet: &mut MutableUdpPacket, rewrite: &Option<PortRewrite>)
             packet.set_source(src);
         }
         if let Some(dst) = rewrite.dst_port {
-            println!(
+            debug!(
                 "src_port: {}, dst_port: {}, changing dst to: {}",
                 packet.get_source(),
                 packet.get_destination(),
@@ -187,7 +188,7 @@ pub fn rewrite_udp(packet: &mut MutableUdpPacket, rewrite: &Option<PortRewrite>)
 pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>) {
     if let Some(rewrite) = rewrite {
         if let Some(src) = rewrite.src_port {
-            println!(
+            debug!(
                 "src_port: {}, dst_port: {}, changing src to: {}",
                 packet.get_source(),
                 packet.get_destination(),
@@ -196,7 +197,7 @@ pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>)
             packet.set_source(src);
         }
         if let Some(dst) = rewrite.dst_port {
-            println!(
+            debug!(
                 "src_port: {}, dst_port: {}, changing src to: {}",
                 packet.get_source(),
                 packet.get_destination(),

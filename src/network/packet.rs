@@ -5,6 +5,7 @@ use crate::network::rewrite::{
 };
 use dns_parser::Packet as DnsPacket;
 use dns_parser::RData;
+use log::debug;
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::icmp::MutableIcmpPacket;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
@@ -374,8 +375,7 @@ impl FixablePacket for IpPacket<'_> {
     fn fix_payload_length(&mut self, payload_len: usize) {
         match self {
             IpPacket::Ipv4Packet(packet) => {
-                let total_len =
-                    (packet.get_header_length() as usize + payload_len) as u16;
+                let total_len = (packet.get_header_length() as usize + payload_len) as u16;
                 packet.set_total_length(total_len);
             }
             IpPacket::Ipv6Packet(packet) => {
@@ -386,7 +386,9 @@ impl FixablePacket for IpPacket<'_> {
     }
 
     fn fix_checksum(&mut self) {
-        if let IpPacket::Ipv4Packet(packet) = self { packet.set_checksum(checksum(&packet.to_immutable())) }
+        if let IpPacket::Ipv4Packet(packet) = self {
+            packet.set_checksum(checksum(&packet.to_immutable()))
+        }
     }
 }
 
@@ -507,7 +509,8 @@ impl FixablePacket for TransportPacket<'_> {
                 packet.set_checksum(checksum);
             }
             TransportPacket::Icmp(_) => {}
-        }    }
+        }
+    }
 }
 
 pub struct ApplicationPacket<'a> {
@@ -534,36 +537,37 @@ impl ApplicationPacketType<'_> {
         match self {
             ApplicationPacketType::DnsPacket(dns_packet) => {
                 for q in &dns_packet.questions {
-                    println!("Q: {}", q.qname);
+                    debug!("Q: {}", q.qname);
                 }
 
                 for r in &mut dns_packet.answers {
-                    println!("R: {}", r.name);
+                    debug!("R: {}", r.name);
                     match &mut r.data {
                         RData::A(a) => {
-                            println!("BEFORE: {}", a.0);
+                            debug!("BEFORE: {}", a.0);
 
                             a.0 = Ipv4Addr::from([192, 168, 1, 1]);
-                            println!("AFTER: {}", a.0)
+                            debug!("AFTER: {}", a.0)
                         }
                         RData::AAAA(aaaa) => {
-                            println!("AAAA: {}", aaaa.0)
+                            debug!("AAAA: {}", aaaa.0)
                         }
                         RData::CNAME(cname) => {
-                            println!("CNAME: {}", cname.0)
+                            debug!("CNAME: {}", cname.0)
                         }
                         RData::MX(_) => {}
                         RData::NS(_) => {}
                         RData::PTR(ptr) => {
-                            println!("PTR: {}", ptr.0)
+                            debug!("PTR: {}", ptr.0)
                         }
                         RData::SOA(_) => {}
                         RData::SRV(_) => {}
                         RData::TXT(txt) => {
                             for record in txt.iter() {
-                                println!(
+                                debug!(
                                     "TXT: {:?}",
-                                    String::from_utf8(Vec::from(record)).expect("Cannot parse TXT records")
+                                    String::from_utf8(Vec::from(record))
+                                        .expect("Cannot parse TXT records")
                                 );
                             }
                         }

@@ -1,6 +1,7 @@
-use std::time::Duration;
 use crate::network::error::{NetworkError, NetworkErrorKind};
+use log::info;
 use pcap::{Activated, Active, Capture, Device, Offline, State};
+use std::time::Duration;
 
 pub trait PacketCapture<T>
 where
@@ -35,7 +36,7 @@ where
                     NetworkErrorKind::CaptureError,
                     &format!("Capture device {} not found", device_name),
                 ))?;
-        println!("Listening on: {:?}", target.name);
+        info!("Listening on: {:?}", target.name);
 
         let capture = Capture::from_device(target)?
             .promisc(true)
@@ -67,7 +68,7 @@ where
     }
     fn apply_filter(&mut self) -> Result<(), NetworkError> {
         if let Some(filter) = &self.filter {
-            println!("Filter applied: {}", filter);
+            info!("Filter applied: {}", filter);
             self.capture.filter(&filter, true)?;
         }
         Ok(())
