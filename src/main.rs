@@ -89,7 +89,7 @@ struct Cli {
     #[clap(short = 'i', long = "interval", value_name = "INTERVAL")]
     interval: Option<u64>,
 
-    /// If true, packets that are same after rewrite are not sent
+    /// If true, packets that are same after rewrite are sent as well
     #[arg(short = 's', long = "straight", action = clap::ArgAction::SetTrue)]
     straight: bool,
 }
