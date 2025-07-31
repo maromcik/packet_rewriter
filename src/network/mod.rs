@@ -5,3 +5,4 @@ pub mod listen;
 pub mod packet;
 pub mod parse;
 pub mod rewrite;
+pub mod nfqueue;

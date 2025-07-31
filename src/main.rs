@@ -12,6 +12,7 @@ use pnet::datalink::MacAddr;
 use std::error::Error;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
+use crate::network::nfqueue::nf_rewrite;
 
 mod error;
 mod network;
@@ -41,6 +42,13 @@ struct Cli {
     )]
     capture_file: Option<String>,
 
+    #[clap(
+        short = 'n',
+        long = "nf-queue",
+        value_name = "NETFILTER_QUEUE",
+        group = "capture"
+    )]
+    nf_queue: Option<u16>,
     /// BPF Filter for packets
     #[clap(short = 'f', long, value_name = "BPF_FILTER")]
     filter: Option<String>,
@@ -106,19 +114,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let rewrite = parse_rewrites(&cli)?;
 
-    match (&cli.capture_device, &cli.capture_file) {
-        (Some(device), _) => {
+    match (&cli.capture_device, &cli.capture_file, &cli.nf_queue) {
+        (Some(device), _, _) => {
             let capture = PacketCaptureGeneric::<Active>::open_device_capture(device, cli.filter)?;
             cap_rewrite(capture, net_config, rewrite)?;
         }
-        (_, Some(file)) => {
+        (_, Some(file), _) => {
             let capture = PacketCaptureGeneric::<Offline>::open_file_capture(file, cli.filter)?;
             cap_rewrite(capture, net_config, rewrite)?;
+        }
+        (_, _, Some(nf_queue)) => {
+            nf_rewrite(net_config, rewrite, *nf_queue)?
         }
         _ => {
             return Err(AppError::new(
                 AppErrorKind::ArgumentError,
-                "Exactly one from: CAPTURE_DEVICE or CAPTURE_FILE must be provided",
+                "Exactly one from: CAPTURE_DEVICE or CAPTURE_FILE or NETFILTER_QUEUE must be provided",
             )
             .into())
         }
