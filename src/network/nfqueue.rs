@@ -2,11 +2,12 @@ use log::{debug, info};
 use nfq::{Message, Queue, Verdict};
 use pnet::datalink::DataLinkSender;
 use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
+use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::Packet;
 use crate::network::capture::PacketCapture;
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::interface::{get_network_channel, NetworkConfig};
-use crate::network::packet::DataLinkPacket;
+use crate::network::packet::{DataLinkPacket, IpPacket};
 use crate::network::rewrite::{rewrite_packet, Rewrite};
 
 pub struct State {
@@ -39,20 +40,20 @@ pub fn nf_rewrite(net_config: NetworkConfig, rewrite: Rewrite, nf_queue: u16) ->
     loop {
         let mut msg = queue.recv().unwrap();
 
-        let packet = EthernetPacket::new(msg.get_payload_mut()).ok_or(NetworkError::new(
+        let packet = Ipv4Packet::new(msg.get_payload()).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Invalid EthernetPacket",
-        )).unwrap();
-
+        ))?;
+        println!("KOKOT {:?}", msg.get_payload().len());
 
         let mut buffer = vec![0; packet.packet().len()];
-        let datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet).unwrap();
+        let datalink_packet = IpPacket::from_buffer(&mut buffer, &packet)?;
         rewrite_packet(datalink_packet, &rewrite);
 
         let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Could not construct an EthernetPacket",
-        )).unwrap();
+        ))?;
 
         let eth_packet = new_packet.to_immutable();
         channel.tx.send_to(eth_packet.packet(), None);
