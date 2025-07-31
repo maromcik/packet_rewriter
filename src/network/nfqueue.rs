@@ -33,11 +33,13 @@ pub fn nf_rewrite(net_config: NetworkConfig, rewrite: Rewrite, nf_queue: u16) ->
     queue.set_recv_security_context(nf_queue, true).unwrap();
     queue.set_recv_uid_gid(nf_queue, true).unwrap();
 
+
     info!("nfqueue initialized");
 
     loop {
         let mut msg = queue.recv().unwrap();
-        let packet = EthernetPacket::new(msg.get_payload()).ok_or(NetworkError::new(
+
+        let packet = EthernetPacket::new(msg.get_payload_mut()).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Invalid EthernetPacket",
         )).unwrap();
