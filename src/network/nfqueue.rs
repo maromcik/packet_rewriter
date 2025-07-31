@@ -56,10 +56,11 @@ pub fn nf_rewrite(net_config: NetworkConfig, rewrite: Rewrite, nf_queue: u16) ->
         ))?;
 
         let eth_packet = new_packet.to_immutable();
-        channel.tx.send_to(eth_packet.packet(), None);
+        // channel.tx.send_to(eth_packet.packet(), None);
 
-        // msg.set_verdict(Verdict::Accept);
-        // queue.verdict(msg).unwrap();
+        msg.set_payload(eth_packet.packet());
+        msg.set_verdict(Verdict::Accept);
+        queue.verdict(msg).unwrap();
         debug!("Packet sent")
 
     }
