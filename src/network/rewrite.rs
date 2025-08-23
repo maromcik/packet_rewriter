@@ -1,4 +1,4 @@
-use crate::network::packet::{ApplicationPacket, DataLinkPacket, IpPacket, NetworkPacket};
+use crate::network::packet::{ApplicationPacket, DataLinkPacket, NetworkPacket};
 use log::debug;
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;
@@ -54,12 +54,12 @@ pub struct VlanRewrite {
     pub vlan_id: u16,
 }
 
-pub fn rewrite_packet<'a>(mut packet: IpPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
-    // let mut data_link_packet = packet.rewrite(&rewrite.datalink_rewrite);
-    // let mut vlan_packet = data_link_packet
-    //     .unpack_vlan()?
-    //     .rewrite(&rewrite.datalink_rewrite);
-    let mut ip_packet = packet.rewrite(&rewrite.ip_rewrite);
+pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
+    let mut data_link_packet = packet.rewrite(&rewrite.datalink_rewrite);
+    let mut vlan_packet = data_link_packet
+        .unpack_vlan()?
+        .rewrite(&rewrite.datalink_rewrite);
+    let mut ip_packet = vlan_packet.get_next_layer()?.rewrite(&rewrite.ip_rewrite);
     let transport_packet = ip_packet
         .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);

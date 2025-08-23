@@ -39,17 +39,15 @@ where
             "Invalid EthernetPacket",
         ))?;
 
-        println!("KOKOT {:?}", packet.packet().len());
-
         let mut buffer = vec![0; packet.packet().len()];
         let datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet)?;
-        // rewrite_packet(datalink_packet, &rewrite);
-        
+        rewrite_packet(datalink_packet, &rewrite);
+
         let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Could not construct an EthernetPacket",
         ))?;
-        
+
         let eth_packet = new_packet.to_immutable();
 
         if net_config.straight || packet != eth_packet {

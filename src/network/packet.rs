@@ -9,7 +9,7 @@ use log::debug;
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::icmp::MutableIcmpPacket;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
-use pnet::packet::ipv4::{checksum, Ipv4Packet, MutableIpv4Packet};
+use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
 use pnet::packet::ipv6::MutableIpv6Packet;
 use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::tcp::{ipv4_checksum as ipv4_checksum_tcp, ipv6_checksum as ipv6_checksum_tcp};
@@ -330,19 +330,6 @@ impl NetworkPacket for IpPacket<'_> {
 }
 
 impl<'a> IpPacket<'a> {
-    pub fn from_buffer(
-        value: &'a mut [u8],
-        packet: &Ipv4Packet,
-    ) -> Result<IpPacket<'a>, NetworkError> {
-        let mut new_packet =
-            MutableIpv4Packet::new(&mut value[..]).ok_or(NetworkError::new(
-                NetworkErrorKind::PacketConstructionError,
-                "Could not construct an EthernetPacket",
-            ))?;
-        new_packet.clone_from(packet);
-        Ok(IpPacket::Ipv4Packet(new_packet))
-    }
-    
     pub fn get_next_header_protocol(&self) -> IpNextHeaderProtocol {
         match self {
             IpPacket::Ipv4Packet(packet) => packet.get_next_level_protocol(),
