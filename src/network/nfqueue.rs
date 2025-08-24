@@ -1,9 +1,8 @@
 use log::{debug, info};
-use nfq::{Message, Queue, Verdict};
+use nfq::{Queue, Verdict};
 use pnet::datalink::DataLinkSender;
 use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
 use pnet::packet::Packet;
-use crate::network::capture::PacketCapture;
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use crate::network::interface::{get_network_channel, NetworkConfig};
 use crate::network::packet::DataLinkPacket;
@@ -42,7 +41,7 @@ pub fn nf_rewrite(net_config: NetworkConfig, rewrite: Rewrite, nf_queue: u16) ->
         let packet = EthernetPacket::new(msg.get_payload_mut()).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Invalid EthernetPacket",
-        )).unwrap();
+        ))?;
 
 
         let mut buffer = vec![0; packet.packet().len()];
@@ -52,7 +51,7 @@ pub fn nf_rewrite(net_config: NetworkConfig, rewrite: Rewrite, nf_queue: u16) ->
         let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
             NetworkErrorKind::PacketConstructionError,
             "Could not construct an EthernetPacket",
-        )).unwrap();
+        ))?;
 
         let eth_packet = new_packet.to_immutable();
         // channel.tx.send_to(eth_packet.packet(), None);

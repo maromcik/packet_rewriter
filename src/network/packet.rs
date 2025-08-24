@@ -14,7 +14,7 @@ use pnet::packet::ipv6::MutableIpv6Packet;
 use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::tcp::{ipv4_checksum as ipv4_checksum_tcp, ipv6_checksum as ipv6_checksum_tcp};
 use pnet::packet::udp::{ipv4_checksum as ipv4_checksum_udp, ipv6_checksum as ipv6_checksum_udp};
-use pnet::packet::udp::{MutableUdpPacket, UdpPacket};
+use pnet::packet::udp::{MutableUdpPacket};
 use pnet::packet::vlan::MutableVlanPacket;
 use pnet::packet::{MutablePacket, Packet};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -154,7 +154,7 @@ impl NetworkPacket for DataLinkPacket<'_> {
     }
 }
 
-fn get_ip_packet(ether_type: EtherType, payload: &mut [u8]) -> Option<IpPacket> {
+fn get_ip_packet(ether_type: EtherType, payload: &'_ mut [u8]) -> Option<IpPacket<'_>> {
     match ether_type {
         EtherTypes::Ipv4 => {
             let ipv4_packet = MutableIpv4Packet::new(payload)?;
@@ -533,7 +533,7 @@ impl<'a> ApplicationPacket<'a> {
 }
 
 impl ApplicationPacketType<'_> {
-    pub fn rewrite(&mut self) -> Option<(Vec<u8>)> {
+    pub fn rewrite(&mut self) -> Option<Vec<u8>> {
         match self {
             ApplicationPacketType::DnsPacket(dns_packet) => {
                 for q in &dns_packet.questions {

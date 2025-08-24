@@ -1,4 +1,4 @@
-use crate::network::packet::{ApplicationPacket, DataLinkPacket, NetworkPacket};
+use crate::network::packet::{DataLinkPacket, NetworkPacket};
 use log::debug;
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;

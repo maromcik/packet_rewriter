@@ -1,7 +1,6 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
 use log::info;
 use pcap::{Activated, Active, Capture, Device, Offline, State};
-use std::time::Duration;
 
 pub trait PacketCapture<T>
 where
