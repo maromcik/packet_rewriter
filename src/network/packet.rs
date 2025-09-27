@@ -1,11 +1,7 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
-use crate::network::rewrite::{
-    rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_tcp, rewrite_udp, rewrite_vlan,
-    DataLinkRewrite, IpRewrite, PortRewrite,
-};
-use dns_parser::Packet as DnsPacket;
-use dns_parser::RData;
-use log::debug;
+use crate::network::rewrite::{rewrite_dns, rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_tcp, rewrite_udp, rewrite_vlan, DataLinkRewrite, DnsRewrite, IpRewrite, PortRewrite};
+use hickory_proto::op::Message;
+use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::icmp::MutableIcmpPacket;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
@@ -13,8 +9,8 @@ use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
 use pnet::packet::ipv6::MutableIpv6Packet;
 use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::tcp::{ipv4_checksum as ipv4_checksum_tcp, ipv6_checksum as ipv6_checksum_tcp};
+use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::udp::{ipv4_checksum as ipv4_checksum_udp, ipv6_checksum as ipv6_checksum_udp};
-use pnet::packet::udp::{MutableUdpPacket};
 use pnet::packet::vlan::MutableVlanPacket;
 use pnet::packet::{MutablePacket, Packet};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -86,8 +82,8 @@ impl TransportPacketIpv6Addresses {
 }
 
 pub enum ApplicationPacketType<'a> {
-    DnsPacket(DnsPacket<'a>),
-}
+    DnsPacket(Message),
+    Other(&'a [u8]),}
 
 impl<'a> From<MutableEthernetPacket<'a>> for DataLinkPacket<'a> {
     fn from(value: MutableEthernetPacket<'a>) -> Self {
@@ -394,17 +390,12 @@ impl FixablePacket for IpPacket<'_> {
 
 impl NetworkPacket for TransportPacket<'_> {
     type ThisLayer<'a> = TransportPacket<'a>;
-    type NextLayer<'a>
-        = Option<()>
+    type NextLayer<'a> = Option<ApplicationPacket<'a>>
     where
         Self: 'a;
 
     fn get_next_layer(&mut self) -> Self::NextLayer<'_> {
-        match self {
-            TransportPacket::Udp(_, _) => None,
-            TransportPacket::Tcp(_, _) => None,
-            TransportPacket::Icmp(_) => None,
-        }
+            ApplicationPacket::new(self)
     }
 
     fn get_mut_payload(&mut self) -> &mut [u8] {
@@ -521,69 +512,48 @@ impl<'a> ApplicationPacket<'a> {
     pub fn new(transport: &'a TransportPacket<'a>) -> Option<ApplicationPacket<'a>> {
         match transport {
             TransportPacket::Udp(packet, _) => {
-                let dns_packet =
-                    DnsPacket::parse(packet.payload()).expect("Failed to parse DNS packet");
+                let msg = Message::from_bytes(packet.payload()).ok()?;
                 Some(ApplicationPacket {
-                    application_packet_type: ApplicationPacketType::DnsPacket(dns_packet),
+                    application_packet_type: ApplicationPacketType::DnsPacket(msg),
                 })
             }
             _ => None,
         }
     }
-}
-
-impl ApplicationPacketType<'_> {
-    pub fn rewrite(&mut self) -> Option<Vec<u8>> {
-        match self {
-            ApplicationPacketType::DnsPacket(dns_packet) => {
-                for q in &dns_packet.questions {
-                    debug!("Q: {}", q.qname);
-                }
-
-                for r in &mut dns_packet.answers {
-                    debug!("R: {}", r.name);
-                    match &mut r.data {
-                        RData::A(a) => {
-                            debug!("BEFORE: {}", a.0);
-
-                            a.0 = Ipv4Addr::from([192, 168, 1, 1]);
-                            debug!("AFTER: {}", a.0)
-                        }
-                        RData::AAAA(aaaa) => {
-                            debug!("AAAA: {}", aaaa.0)
-                        }
-                        RData::CNAME(cname) => {
-                            debug!("CNAME: {}", cname.0)
-                        }
-                        RData::MX(_) => {}
-                        RData::NS(_) => {}
-                        RData::PTR(ptr) => {
-                            debug!("PTR: {}", ptr.0)
-                        }
-                        RData::SOA(_) => {}
-                        RData::SRV(_) => {}
-                        RData::TXT(txt) => {
-                            for record in txt.iter() {
-                                debug!(
-                                    "TXT: {:?}",
-                                    String::from_utf8(Vec::from(record))
-                                        .expect("Cannot parse TXT records")
-                                );
-                            }
-                        }
-                        RData::Unknown(_, _) => {}
-                    }
-                }
-                let mut new_dns = dns_parser::Builder::new_query(1, false);
-                new_dns.add_question(
-                    "pes.sk",
-                    false,
-                    dns_parser::QueryType::A,
-                    dns_parser::QueryClass::IN,
-                );
-
-                Some(new_dns.build().expect("Failed to build DNS"))
-            }
+    pub fn from_bytes(port: i32, bytes: &'_ [u8]) -> Result<ApplicationPacket<'_>, NetworkError> {
+        match port {
+            53 | 5353 => Ok(ApplicationPacket {
+                application_packet_type: ApplicationPacketType::DnsPacket(Message::from_bytes(
+                    bytes,
+                )?),
+            }),
+            _ => Ok(ApplicationPacket {
+                application_packet_type: ApplicationPacketType::Other(bytes),
+            }),
         }
+    }
+
+    pub fn get_owned_payload(&self) -> Result<Vec<u8>, NetworkError> {
+        match self.application_packet_type {
+            ApplicationPacketType::DnsPacket(ref packet) => Ok(packet.to_bytes()?),
+            ApplicationPacketType::Other(packet) => Ok(packet.to_owned()),
+        }
+    }
+
+    pub fn read_content(&mut self) -> String {
+        match self.application_packet_type {
+            ApplicationPacketType::DnsPacket(ref mut packet) => {
+                packet.to_string()
+            }
+            ApplicationPacketType::Other(packet) => String::from_utf8_lossy(packet).to_string(),
+        }
+    }
+
+    pub fn rewrite(mut self, rewrite: &Option<DnsRewrite>) -> ApplicationPacket<'a> {
+        match self.application_packet_type {
+            ApplicationPacketType::DnsPacket(ref mut packet) => rewrite_dns(packet, rewrite),
+            ApplicationPacketType::Other(_) => {}
+        }
+        self
     }
 }

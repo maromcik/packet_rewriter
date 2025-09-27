@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::network::packet::{DataLinkPacket, NetworkPacket};
 use log::debug;
 use pnet::datalink::MacAddr;
@@ -8,12 +9,15 @@ use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use hickory_proto::op::Message;
+use hickory_proto::rr::{RData, Record};
 
 #[derive(Default)]
 pub struct Rewrite {
     pub datalink_rewrite: Option<DataLinkRewrite>,
     pub ip_rewrite: Option<IpRewrite>,
     pub transport_rewrite: Option<PortRewrite>,
+    pub dns_rewrite: Option<DnsRewrite>,
 }
 
 pub struct IpRewrite {
@@ -54,23 +58,22 @@ pub struct VlanRewrite {
     pub vlan_id: u16,
 }
 
+#[derive(Default)]
+pub struct DnsRewrite {
+    pub a: Option<Ipv4Addr>,
+    pub aaaa: Option<Ipv6Addr>,
+}
+
 pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
     let mut data_link_packet = packet.rewrite(&rewrite.datalink_rewrite);
     let mut vlan_packet = data_link_packet
         .unpack_vlan()?
         .rewrite(&rewrite.datalink_rewrite);
     let mut ip_packet = vlan_packet.get_next_layer()?.rewrite(&rewrite.ip_rewrite);
-    let transport_packet = ip_packet
+    let mut transport_packet = ip_packet
         .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);
-    //
-    // let mut dns_packet = ApplicationPacket::new(&transport_packet)?;
-    // let new_dns_packet = dns_packet.application_packet_type.rewrite()?;
-    // transport_packet.set_payload(new_dns_packet.as_slice());
-    // let payload = transport_packet.get_packet().to_vec();
-    // ip_packet.set_payload(payload.as_slice());
-    // let payload = ip_packet.get_packet().to_vec();
-    // data_link_packet.set_payload(payload.as_slice());
+    let application_packet = transport_packet.get_next_layer();
 
     Some(())
 }
@@ -206,4 +209,42 @@ pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>)
             packet.set_destination(dst);
         }
     };
+}
+
+pub fn rewrite_dns(message: &mut Message, rewrite: &Option<DnsRewrite>) {
+    if let Some(rewrite) = rewrite {
+        for ans in message.answers_mut().iter_mut() {
+            if let Some(ipv4) = rewrite.a {
+                rewrite_a_record(ans, ipv4);
+            }
+            if let Some(ipv6) = rewrite.aaaa {
+                rewrite_aaaa_record(ans, ipv6);
+            }
+        }
+
+        for add in message.additionals_mut() {
+            if let Some(ipv4) = rewrite.a {
+                rewrite_a_record(add, ipv4);
+            }
+            if let Some(ipv6) = rewrite.aaaa {
+                rewrite_aaaa_record(add, ipv6);
+            }
+        }
+    }
+
+    pub fn rewrite_a_record(record: &mut Record, ipv4: Ipv4Addr) {
+        if record.data().is_a() {
+            record.set_data(RData::A(hickory_proto::rr::rdata::a::A::from(
+                ipv4,
+            )));
+        }
+    }
+
+    pub fn rewrite_aaaa_record(record: &mut Record, ipv6: Ipv6Addr) {
+        if record.data().is_aaaa() {
+            record.set_data(RData::AAAA(hickory_proto::rr::rdata::aaaa::AAAA::from(
+                ipv6,
+            )));
+        }
+    }
 }

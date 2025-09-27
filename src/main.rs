@@ -93,6 +93,13 @@ struct Cli {
     #[clap(short = 'v', long = "vlan", value_name = "VLAN IDENTIFIER")]
     vlan_id: Option<u16>,
 
+    /// New A value in all records
+    #[clap(long = "dns-a", value_name = "A_RECORD")]
+    a: Option<Ipv4Addr>,
+
+    /// new AAAA value in all records
+    #[clap(long = "dns-aaaa", value_name = "AAAA_RECORD")]
+    aaaa: Option<Ipv6Addr>,
     /// Interval between packets in milliseconds
     #[clap(short = 'i', long = "interval", value_name = "INTERVAL")]
     interval: Option<u64>,

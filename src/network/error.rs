@@ -14,6 +14,7 @@ pub enum NetworkErrorKind {
     ParseAddrError,
     PacketConstructionError,
     PacketRewriteError,
+    DnsError,
 }
 
 impl Display for NetworkErrorKind {
@@ -28,6 +29,7 @@ impl Display for NetworkErrorKind {
                 f.write_str("Packet could not be constructed")
             }
             NetworkErrorKind::PacketRewriteError => f.write_str("Packet could not be rewritten"),
+            NetworkErrorKind::DnsError => f.write_str("Dns packet could not be parsed"),
         }
     }
 }
@@ -88,5 +90,14 @@ impl From<AddrParseError> for NetworkError {
 impl From<ParseIntError> for NetworkError {
     fn from(value: ParseIntError) -> Self {
         NetworkError::new(NetworkErrorKind::ParseAddrError, &value.to_string())
+    }
+}
+
+impl From<hickory_proto::ProtoError> for NetworkError {
+    fn from(value: hickory_proto::ProtoError) -> Self {
+        Self::new(
+            NetworkErrorKind::DnsError,
+            value.to_string().as_str(),
+        )
     }
 }
