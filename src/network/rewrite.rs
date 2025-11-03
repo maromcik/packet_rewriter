@@ -1,5 +1,6 @@
-use std::collections::HashSet;
 use crate::network::packet::{DataLinkPacket, NetworkPacket};
+use hickory_proto::op::Message;
+use hickory_proto::rr::{RData, Record};
 use log::debug;
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::MutableEthernetPacket;
@@ -9,8 +10,6 @@ use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::vlan::MutableVlanPacket;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use hickory_proto::op::Message;
-use hickory_proto::rr::{RData, Record};
 
 #[derive(Default)]
 pub struct Rewrite {
@@ -73,7 +72,7 @@ pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> O
     let mut transport_packet = ip_packet
         .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);
-    let application_packet = transport_packet.get_next_layer();
+    let _application_packet = transport_packet.get_next_layer();
 
     Some(())
 }
@@ -234,9 +233,7 @@ pub fn rewrite_dns(message: &mut Message, rewrite: &Option<DnsRewrite>) {
 
     pub fn rewrite_a_record(record: &mut Record, ipv4: Ipv4Addr) {
         if record.data().is_a() {
-            record.set_data(RData::A(hickory_proto::rr::rdata::a::A::from(
-                ipv4,
-            )));
+            record.set_data(RData::A(hickory_proto::rr::rdata::a::A::from(ipv4)));
         }
     }
 

@@ -1,5 +1,8 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
-use crate::network::rewrite::{rewrite_dns, rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_tcp, rewrite_udp, rewrite_vlan, DataLinkRewrite, DnsRewrite, IpRewrite, PortRewrite};
+use crate::network::rewrite::{
+    rewrite_dns, rewrite_ipv4, rewrite_ipv6, rewrite_mac, rewrite_tcp, rewrite_udp, rewrite_vlan,
+    DataLinkRewrite, DnsRewrite, IpRewrite, PortRewrite,
+};
 use hickory_proto::op::Message;
 use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
@@ -83,7 +86,8 @@ impl TransportPacketIpv6Addresses {
 
 pub enum ApplicationPacketType<'a> {
     DnsPacket(Message),
-    Other(&'a [u8]),}
+    Other(&'a [u8]),
+}
 
 impl<'a> From<MutableEthernetPacket<'a>> for DataLinkPacket<'a> {
     fn from(value: MutableEthernetPacket<'a>) -> Self {
@@ -201,7 +205,7 @@ impl<'a> DataLinkPacket<'a> {
         self
     }
 
-    pub fn unpack_vlan(&mut self) -> Option<DataLinkPacket> {
+    pub fn unpack_vlan(&'_ mut self) -> Option<DataLinkPacket<'_>> {
         match self {
             DataLinkPacket::EthPacket(ref mut packet) => {
                 if packet.get_ethertype() == EtherTypes::Vlan {
@@ -390,12 +394,13 @@ impl FixablePacket for IpPacket<'_> {
 
 impl NetworkPacket for TransportPacket<'_> {
     type ThisLayer<'a> = TransportPacket<'a>;
-    type NextLayer<'a> = Option<ApplicationPacket<'a>>
+    type NextLayer<'a>
+        = Option<ApplicationPacket<'a>>
     where
         Self: 'a;
 
     fn get_next_layer(&mut self) -> Self::NextLayer<'_> {
-            ApplicationPacket::new(self)
+        ApplicationPacket::new(self)
     }
 
     fn get_mut_payload(&mut self) -> &mut [u8] {
@@ -542,9 +547,7 @@ impl<'a> ApplicationPacket<'a> {
 
     pub fn read_content(&mut self) -> String {
         match self.application_packet_type {
-            ApplicationPacketType::DnsPacket(ref mut packet) => {
-                packet.to_string()
-            }
+            ApplicationPacketType::DnsPacket(ref mut packet) => packet.to_string(),
             ApplicationPacketType::Other(packet) => String::from_utf8_lossy(packet).to_string(),
         }
     }

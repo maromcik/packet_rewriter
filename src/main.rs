@@ -4,15 +4,14 @@ use crate::error::{AppError, AppErrorKind};
 use crate::network::capture::PacketCaptureGeneric;
 use crate::network::interface::NetworkConfig;
 use crate::network::listen::cap_rewrite;
+use crate::network::nfqueue::nf_rewrite;
 use crate::network::parse::parse_rewrites;
 use clap::Parser;
-use env_logger::Env;
 use pcap::{Active, Offline};
 use pnet::datalink::MacAddr;
 use std::error::Error;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
-use crate::network::nfqueue::nf_rewrite;
 
 mod error;
 mod network;
@@ -144,16 +143,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let capture = PacketCaptureGeneric::<Offline>::open_file_capture(file, cli.filter)?;
             cap_rewrite(capture, net_config, rewrite)?;
         }
-        (_, _, Some(nf_queue)) => {
-            nf_rewrite(net_config, rewrite, *nf_queue)?
-        }
-        _ => {
-            return Err(AppError::new(
-                AppErrorKind::ArgumentError,
-                "Exactly one from: CAPTURE_DEVICE or CAPTURE_FILE or NETFILTER_QUEUE must be provided",
-            )
-            .into())
-        }
+        (_, _, Some(nf_queue)) => nf_rewrite(net_config, rewrite, *nf_queue)?,
+        _ => return Err(AppError::new(
+            AppErrorKind::ArgumentError,
+            "Exactly one from: CAPTURE_DEVICE or CAPTURE_FILE or NETFILTER_QUEUE must be provided",
+        )
+        .into()),
     };
 
     Ok(())
