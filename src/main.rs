@@ -107,12 +107,26 @@ struct Cli {
     /// If true, packets that are same after rewrite are sent as well
     #[arg(short = 's', long = "straight", action = clap::ArgAction::SetTrue)]
     straight: bool,
+
+    /// Optional log level.
+    #[clap(
+        short = 'l',
+        long,
+        value_name = "LOG_LEVEL",
+        env = "RUST_LOG",
+        default_value = "info"
+    )]
+    log_level: log::LevelFilter,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     dotenvy::dotenv().ok();
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
+
+    env_logger::Builder::new()
+        .filter(None, cli.log_level)
+        .init();
+
     let net_config = NetworkConfig {
         output_device: cli.output_device.clone(),
         interval: cli.interval.map(Duration::from_millis),
