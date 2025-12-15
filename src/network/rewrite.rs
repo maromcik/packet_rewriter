@@ -1,4 +1,4 @@
-use crate::network::packet::{DataLinkPacket, NetworkPacket};
+use crate::network::packet::{DataLinkPacket, IpPacket, NetworkPacket};
 use hickory_proto::op::Message;
 use hickory_proto::rr::{RData, Record};
 use log::debug;
@@ -12,6 +12,7 @@ use pnet::packet::vlan::MutableVlanPacket;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct Rewrite {
     pub datalink_rewrite: Option<DataLinkRewrite>,
     pub ip_rewrite: Option<IpRewrite>,
@@ -69,6 +70,16 @@ pub fn rewrite_packet<'a>(packet: DataLinkPacket<'a>, rewrite: &'a Rewrite) -> O
         .unpack_vlan()?
         .rewrite(&rewrite.datalink_rewrite);
     let mut ip_packet = vlan_packet.get_next_layer()?.rewrite(&rewrite.ip_rewrite);
+    let mut transport_packet = ip_packet
+        .get_next_layer()?
+        .rewrite(&rewrite.transport_rewrite);
+    let _application_packet = transport_packet.get_next_layer();
+
+    Some(())
+}
+
+pub fn rewrite_ip_packet<'a>(packet: IpPacket<'a>, rewrite: &'a Rewrite) -> Option<()> {
+    let mut ip_packet = packet.rewrite(&rewrite.ip_rewrite);
     let mut transport_packet = ip_packet
         .get_next_layer()?
         .rewrite(&rewrite.transport_rewrite);
@@ -200,7 +211,7 @@ pub fn rewrite_tcp(packet: &mut MutableTcpPacket, rewrite: &Option<PortRewrite>)
         }
         if let Some(dst) = rewrite.dst_port {
             debug!(
-                "src_port: {}, dst_port: {}, changing src to: {}",
+                "src_port: {}, dst_port: {}, changing dst to: {}",
                 packet.get_source(),
                 packet.get_destination(),
                 dst

@@ -1,62 +1,72 @@
 use crate::network::error::{NetworkError, NetworkErrorKind};
-use crate::network::interface::{get_network_channel, NetworkConfig};
-use crate::network::packet::DataLinkPacket;
-use crate::network::rewrite::{rewrite_packet, Rewrite};
-use log::{debug, info};
-use nfq::{Queue, Verdict};
-use pnet::datalink::DataLinkSender;
-use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
+use crate::network::interface::{get_ipv4_channel, get_ipv6_channel, NetworkConfig};
+use crate::network::packet::IpPacket;
+use crate::network::rewrite::{rewrite_ip_packet, Rewrite};
+use log::{debug, info, trace};
+use nfq::Queue;
+use pnet::packet::ipv4::{Ipv4Packet, MutableIpv4Packet};
+use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
 use pnet::packet::Packet;
-
-pub struct State {
-    tx: Box<dyn DataLinkSender>,
-    rewrite: Rewrite,
-}
-
-impl State {
-    pub fn new(tx: Box<dyn DataLinkSender>, rewrite: Rewrite) -> Self {
-        Self { tx, rewrite }
-    }
-}
+use std::net::IpAddr;
 
 pub fn nf_rewrite(
-    net_config: NetworkConfig,
+    _net_config: NetworkConfig,
     rewrite: Rewrite,
     nf_queue: u16,
 ) -> Result<(), NetworkError> {
-    let _channel = get_network_channel(&net_config)?;
+    let mut channel4 = get_ipv4_channel()?;
+    let mut channel6 = get_ipv6_channel()?;
 
-    let mut queue = Queue::open().unwrap();
-    queue.bind(nf_queue).unwrap();
-    queue.set_recv_conntrack(nf_queue, true).unwrap();
-    queue.set_recv_security_context(nf_queue, true).unwrap();
-    queue.set_recv_uid_gid(nf_queue, true).unwrap();
+    let mut queue = Queue::open()?;
+    queue.bind(nf_queue)?;
+    queue.set_recv_conntrack(nf_queue, true)?;
+    queue.set_recv_security_context(nf_queue, true)?;
+    queue.set_recv_uid_gid(nf_queue, true)?;
 
     info!("nfqueue initialized");
 
     loop {
-        let mut msg = queue.recv().unwrap();
+        let mut msg = queue.recv()?;
+        match msg.get_hw_protocol() {
+            2048 => {
+                let packet = Ipv4Packet::new(msg.get_payload_mut()).ok_or(NetworkError::new(
+                    NetworkErrorKind::PacketConstructionError,
+                    "Invalid IPv4 Packet",
+                ))?;
 
-        let packet = EthernetPacket::new(msg.get_payload_mut()).ok_or(NetworkError::new(
-            NetworkErrorKind::PacketConstructionError,
-            "Invalid EthernetPacket",
-        ))?;
+                let mut buffer = vec![0; packet.packet().len()];
+                let ip_packet = IpPacket::from_buffer_ipv4(&mut buffer, &packet)?;
+                rewrite_ip_packet(ip_packet, &rewrite);
+                let new_packet =
+                    MutableIpv4Packet::new(&mut buffer[..]).ok_or(NetworkError::new(
+                        NetworkErrorKind::PacketConstructionError,
+                        "Could not construct an IPv4",
+                    ))?;
+                let dst = new_packet.get_destination();
+                channel4.0.send_to(new_packet, IpAddr::V4(dst))?;
+            }
+            34525 => {
+                let packet = Ipv6Packet::new(msg.get_payload_mut()).ok_or(NetworkError::new(
+                    NetworkErrorKind::PacketConstructionError,
+                    "Invalid IPv6 Packet",
+                ))?;
 
-        let mut buffer = vec![0; packet.packet().len()];
-        let datalink_packet = DataLinkPacket::from_buffer(&mut buffer, &packet).unwrap();
-        rewrite_packet(datalink_packet, &rewrite);
-
-        let new_packet = MutableEthernetPacket::new(&mut buffer[..]).ok_or(NetworkError::new(
-            NetworkErrorKind::PacketConstructionError,
-            "Could not construct an EthernetPacket",
-        ))?;
-
-        let eth_packet = new_packet.to_immutable();
-        // channel.tx.send_to(eth_packet.packet(), None);
-
-        msg.set_payload(eth_packet.packet());
-        msg.set_verdict(Verdict::Accept);
-        queue.verdict(msg).unwrap();
-        debug!("Packet sent")
+                let mut buffer = vec![0; packet.packet().len()];
+                let ip_packet = IpPacket::from_buffer_ipv6(&mut buffer, &packet)?;
+                rewrite_ip_packet(ip_packet, &rewrite);
+                let new_packet =
+                    MutableIpv6Packet::new(&mut buffer[..]).ok_or(NetworkError::new(
+                        NetworkErrorKind::PacketConstructionError,
+                        "Could not construct an IPv6",
+                    ))?;
+                let dst = new_packet.get_destination();
+                channel6.0.send_to(new_packet, IpAddr::V6(dst))?;
+            }
+            _ => {
+                debug!("Not an IPv4 or IPv6 packet, skipping");
+            }
+        };
+        trace!("Packet sent");
+        queue.verdict(msg)?;
     }
 }

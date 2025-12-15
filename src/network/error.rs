@@ -14,6 +14,7 @@ pub enum NetworkErrorKind {
     ParseAddrError,
     PacketConstructionError,
     DnsError,
+    IoError,
 }
 
 impl Display for NetworkErrorKind {
@@ -28,6 +29,7 @@ impl Display for NetworkErrorKind {
                 f.write_str("Packet could not be constructed")
             }
             NetworkErrorKind::DnsError => f.write_str("Dns packet could not be parsed"),
+            NetworkErrorKind::IoError => f.write_str("I/O error"),
         }
     }
 }
@@ -94,5 +96,11 @@ impl From<ParseIntError> for NetworkError {
 impl From<hickory_proto::ProtoError> for NetworkError {
     fn from(value: hickory_proto::ProtoError) -> Self {
         Self::new(NetworkErrorKind::DnsError, value.to_string().as_str())
+    }
+}
+
+impl From<std::io::Error> for NetworkError {
+    fn from(value: std::io::Error) -> Self {
+        NetworkError::new(NetworkErrorKind::IoError, value.to_string().as_str())
     }
 }

@@ -8,8 +8,8 @@ use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
 use pnet::packet::ethernet::{EtherType, EtherTypes, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::icmp::MutableIcmpPacket;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
-use pnet::packet::ipv4::{checksum, MutableIpv4Packet};
-use pnet::packet::ipv6::MutableIpv6Packet;
+use pnet::packet::ipv4::{checksum, Ipv4Packet, MutableIpv4Packet};
+use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
 use pnet::packet::tcp::MutableTcpPacket;
 use pnet::packet::tcp::{ipv4_checksum as ipv4_checksum_tcp, ipv6_checksum as ipv6_checksum_tcp};
 use pnet::packet::udp::MutableUdpPacket;
@@ -24,6 +24,7 @@ pub trait FixablePacket {
     fn fix_checksum(&mut self);
 }
 
+#[allow(dead_code)]
 pub trait NetworkPacket {
     type ThisLayer<'a>;
     type NextLayer<'a>
@@ -35,11 +36,6 @@ pub trait NetworkPacket {
     fn get_mut_packet(&mut self) -> &mut [u8];
     fn get_packet(&self) -> &[u8];
     fn set_payload(&mut self, payload: &[u8]);
-}
-
-pub trait NetworkApplicationPacket {
-    type TransportLayer<'a>;
-    type Type<'a>;
 }
 
 pub enum DataLinkPacket<'a> {
@@ -84,6 +80,7 @@ impl TransportPacketIpv6Addresses {
     }
 }
 
+#[allow(dead_code)]
 pub enum ApplicationPacketType<'a> {
     DnsPacket(Message),
     Other(&'a [u8]),
@@ -168,6 +165,7 @@ fn get_ip_packet(ether_type: EtherType, payload: &'_ mut [u8]) -> Option<IpPacke
     }
 }
 
+#[allow(dead_code)]
 impl<'a> DataLinkPacket<'a> {
     pub fn from_buffer(
         value: &'a mut [u8],
@@ -181,6 +179,7 @@ impl<'a> DataLinkPacket<'a> {
         new_packet.clone_from(packet);
         Ok(DataLinkPacket::EthPacket(new_packet))
     }
+    #[allow(dead_code)]
     pub fn new_eth(packet: MutableEthernetPacket<'a>) -> Self {
         DataLinkPacket::EthPacket(packet)
     }
@@ -329,7 +328,32 @@ impl NetworkPacket for IpPacket<'_> {
     }
 }
 
+#[allow(dead_code)]
 impl<'a> IpPacket<'a> {
+    pub fn from_buffer_ipv4(
+        value: &'a mut [u8],
+        packet: &Ipv4Packet,
+    ) -> Result<IpPacket<'a>, NetworkError> {
+        let mut new_packet = MutableIpv4Packet::new(&mut value[..]).ok_or(NetworkError::new(
+            NetworkErrorKind::PacketConstructionError,
+            "Could not construct an EthernetPacket",
+        ))?;
+        new_packet.clone_from(packet);
+        Ok(IpPacket::Ipv4Packet(new_packet))
+    }
+
+    pub fn from_buffer_ipv6(
+        value: &'a mut [u8],
+        packet: &Ipv6Packet,
+    ) -> Result<IpPacket<'a>, NetworkError> {
+        let mut new_packet = MutableIpv6Packet::new(&mut value[..]).ok_or(NetworkError::new(
+            NetworkErrorKind::PacketConstructionError,
+            "Could not construct an EthernetPacket",
+        ))?;
+        new_packet.clone_from(packet);
+        Ok(IpPacket::Ipv6Packet(new_packet))
+    }
+
     pub fn get_next_header_protocol(&self) -> IpNextHeaderProtocol {
         match self {
             IpPacket::Ipv4Packet(packet) => packet.get_next_level_protocol(),
@@ -509,10 +533,12 @@ impl FixablePacket for TransportPacket<'_> {
     }
 }
 
+#[allow(dead_code)]
 pub struct ApplicationPacket<'a> {
     pub application_packet_type: ApplicationPacketType<'a>,
 }
 
+#[allow(dead_code)]
 impl<'a> ApplicationPacket<'a> {
     pub fn new(transport: &'a TransportPacket<'a>) -> Option<ApplicationPacket<'a>> {
         match transport {
